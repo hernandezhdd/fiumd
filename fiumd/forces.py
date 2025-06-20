@@ -288,7 +288,7 @@ class TorchMDNetForce(Force):
         self.dtype = dtype
         # box = getattr(ensemble, "box", None)
 
-        self.box = box.to(self.dtype) if box is not None else None
+        self.box = nn.parameter.Buffer(box.to(self.dtype)) if box is not None else None
 
         # self.output_transformer = (
         #     lambda e, f: (e, f) if output_transform is None else output_transform
@@ -321,3 +321,132 @@ class TorchMDNetForce(Force):
             
     def info(self):
         fiumd.utils.info(self)
+
+class DihedralForce(Force):
+    def __init__(self,
+                 force_idx_map: torch.Tensor,
+                 global_dihed_term_idx: torch.Tensor,
+                 dihed_term_system_idx: torch.Tensor,
+                 torsion_param_map: torch.Tensor,
+                 kwarg_params: dict[str, torch.Tensor],
+                 ):
+        super().__init__("Dihedral")
+
+        self.dihedral_idx_map = nn.parameter.Buffer(force_idx_map, persistent=True)
+        self.global_dihed_term_idx = nn.parameter.Buffer(global_dihed_term_idx, persistent=True)
+        self.dihed_term_system_idx = nn.parameter.Buffer(dihed_term_system_idx, persistent=True)
+        self.torsion_param_map = nn.parameter.Buffer(torsion_param_map, persistent=True)
+
+        # Static buffers for k, phi0, periodicity
+        self.k = nn.parameter.Buffer(kwarg_params['params'][:, 0], persistent=True)
+        self.phi0 = nn.parameter.Buffer(kwarg_params['params'][:, 1], persistent=True)
+        self.periodicity = nn.parameter.Buffer(kwarg_params['params'][:, 2], persistent=True)
+
+        # Preallocate intermediate results
+        nterms = torsion_param_map.shape[0]
+        self.pot = nn.parameter.Buffer(torch.empty(nterms), persistent=False)
+        self.force0 = nn.parameter.Buffer(torch.empty(nterms, 3), persistent=False)
+        self.force1 = nn.parameter.Buffer(torch.empty(nterms, 3), persistent=False)
+        self.force2 = nn.parameter.Buffer(torch.empty(nterms, 3), persistent=False)
+        self.force3 = nn.parameter.Buffer(torch.empty(nterms, 3), persistent=False)
+
+    @classmethod
+    def build_params(cls, system):
+        return system.params.dihedral_params
+
+    def forward(self, ensemble, inplace=True):
+
+        evaluate_torsion_into(
+            self.pot,
+            self.force0, self.force1, self.force2, self.force3,
+            all_relative_positions=ensemble.pairs_relative_positions,
+            all_distances=ensemble.pairs_distances,
+            dihedral_idx_map=self.force_idx_map,
+            torsion_param_map=self.torsion_param_map,
+            k=self.k,
+            phi0=self.phi0,
+            periodicity=self.periodicity,
+        )
+
+        if inplace:
+            ensemble.energy.index_add_(0, self.dihed_term_system_idx, self.pot)
+            ensemble.forces.index_add_(0, self.global_dihed_term_idx[:, 0], self.force0)
+            ensemble.forces.index_add_(0, self.global_dihed_term_idx[:, 1], self.force1)
+            ensemble.forces.index_add_(0, self.global_dihed_term_idx[:, 2], self.force2)
+            ensemble.forces.index_add_(0, self.global_dihed_term_idx[:, 3], self.force3)
+            return None
+        else:
+            energy = torch.zeros_like(ensemble.energy)
+            forces = torch.zeros_like(ensemble.forces)
+            energy.index_add_(0, self.dihed_term_system_idx, self.pot)
+            forces.index_add_(0, self.global_dihed_term_idx[:, 0], self.force0)
+            forces.index_add_(0, self.global_dihed_term_idx[:, 1], self.force1)
+            forces.index_add_(0, self.global_dihed_term_idx[:, 2], self.force2)
+            forces.index_add_(0, self.global_dihed_term_idx[:, 3], self.force3)
+            return energy, forces
+
+
+def evaluate_torsion_into(
+    pot: torch.Tensor,
+    force0: torch.Tensor,
+    force1: torch.Tensor,
+    force2: torch.Tensor,
+    force3: torch.Tensor,
+    *,
+    all_relative_positions: torch.Tensor,
+    all_distances: torch.Tensor,
+    dihedral_idx_map: torch.Tensor,
+    torsion_param_map: torch.Tensor,
+    k: torch.Tensor,
+    phi0: torch.Tensor,
+    periodicity: torch.Tensor,
+):
+    dih_idx = torsion_param_map[:, 0]
+
+    r12 = all_relative_positions[dihedral_idx_map[dih_idx, 0]]
+    r23 = all_relative_positions[dihedral_idx_map[dih_idx, 1]]
+    r34 = all_relative_positions[dihedral_idx_map[dih_idx, 2]]
+
+    crossA = torch.cross(r12, r23, dim=1)
+    crossB = torch.cross(r23, r34, dim=1)
+    crossC = torch.cross(r23, crossA, dim=1)
+
+    normA = 1e-8 + crossA.norm(dim=1)
+    normB = 1e-8 + crossB.norm(dim=1)
+    normC = 1e-8 + crossC.norm(dim=1)
+
+    crossB_normed = crossB / normB.unsqueeze(1)
+    cos_phi = (crossA * crossB_normed).sum(dim=1) / normA
+    sin_phi = (crossC * crossB_normed).sum(dim=1) / normC
+    phi = -torch.atan2(sin_phi, cos_phi)
+
+    is_amber = (periodicity > 0).all()
+
+    if is_amber:
+        angle_diff = periodicity * phi - phi0
+        pot.copy_(k * (1 + torch.cos(angle_diff)))
+        coeff = -periodicity * k * torch.sin(angle_diff)
+    else:
+        angle_diff = (phi - phi0 + math.pi) % (2 * math.pi) - math.pi
+        pot.copy_(k * angle_diff**2)
+        coeff = 2 * k * angle_diff
+
+    norm_r23 = all_distances[dihedral_idx_map[dih_idx, 1]]
+    norm_r23_sq = norm_r23**2 + 1e-8
+
+    dot12 = (r12 * r23).sum(dim=1)
+    dot34 = (r34 * r23).sum(dim=1)
+
+    force_factor0 = (-coeff * norm_r23) / (normA**2)
+    force_factor1 = dot12 / norm_r23_sq
+    force_factor2 = dot34 / norm_r23_sq
+    force_factor3 = (coeff * norm_r23) / (normB**2)
+
+    force0vec = force_factor0.unsqueeze(1) * crossA
+    force3vec = force_factor3.unsqueeze(1) * crossB
+    s = force_factor1.unsqueeze(1) * force0vec - force_factor2.unsqueeze(1) * force3vec
+
+    force0.copy_(-force0vec)
+    force1.copy_(force0vec + s)
+    force2.copy_(force3vec - s)
+    force3.copy_(-force3vec)
