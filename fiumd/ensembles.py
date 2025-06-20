@@ -173,25 +173,21 @@ class Ensemble(nn.Module):
         return self.centers_of_mass_
 
     def _build_global_pairs_and_maps(self):
-        self.pair_to_system = torch.empty(self.global_pair_idx.shape[0], dtype=torch.long, device=device)
-        pair_map = match_pair_indices(self.global_pair_idx, torch.cat([v for v in self.pair_idx_by_force.values()], dim=0), max_atom=self.total_atoms)
-        self.pair_to_system[pair_map] = self.atom_to_system[self.global_pair_idx[pair_map, 0]]
-
-
-    def _build_global_pairs_and_maps(self):
         device = self.device
-        self.pair_idx_by_force = {}
-        self.pair_map_by_force = {}
-    
+
         self._force_terms_set = set()
+        self.term_to_pair_by_force = {}
+        self.global_atom_idx_by_force = {}
+        self.term_to_system_by_force = {}
+        self.term_to_param_idx_by_force = {}
         self._param_names_by_force = {}
-        
+
         for s in self.systems:
             self._force_terms_set.update(s.params_by_force.keys())
             for force_name, params in s.params_by_force.items():
-                if not force_name in self._param_names_by_force.keys():
+                if force_name not in self._param_names_by_force:
                     self._param_names_by_force[force_name] = params.keys()
-    
+
         # Build all (i < j) intra-system pairs
         all_pairs_by_system = []
         for s in self.systems:
@@ -200,93 +196,124 @@ class Ensemble(nn.Module):
             mask = i < j
             all_pairs = torch.stack([i[mask], j[mask]], dim=1)
             all_pairs_by_system.append(all_pairs)
-    
-        # Build global index of all possible intra-system pairs
-        self.global_pair_idx, self.pair_to_system = local_to_global_idxs(all_pairs_by_system, self.natoms_per_system, device=device)
-        all_pairs_set = set(map(tuple, self.global_pair_idx.tolist()))
-    
-        # Force-specific pairs
+
+        self.global_pair_idx, self.pair_to_system = local_to_global_idxs(
+            all_pairs_by_system, self.natoms_per_system, device=device
+        )
+        all_pairs_set = set( torch.arange(self.global_pair_idx.shape[0]).tolist() )
+
         for force_name in self._force_terms_set:
             if force_name == "RepulsionCGForce":
                 continue
-            local_force_maps = {s: s.params_by_force[force_name]['map'] for s in self.systems}
-            local_force_idxs = [s.params_by_force[force_name]['idx'][local_force_maps[s]] for s in self.systems]
-            global_force_idxs, _ = local_to_global_idxs(local_force_idxs, self.natoms_per_system, device=device)
-            self.idx_by_force[force_name] = global_force_idxs
-            
-            if force_name == "DihedralForce":
-                dihedral_map_list = []
-                for i in range(3):
-                    dihedral_map_i = match_pair_indices(self.global_pair_idx,
-                                                        global_force_idxs[:,[i,i+1]],
-                                                        max_atom=self.total_atoms)
-                    dihedral_map_list.append(dihedral_map_i)
-                    
-                self.pair_map_by_force[force_name] = torch.stack(dihedral_map_list, dim=1)
 
-                continue
-                
-            self.pair_map_by_force[force_name] = match_pair_indices(self.global_pair_idx,
-                                                               global_force_idxs,
-                                                               max_atom=self.total_atoms)
-    
+            # local_idxs = [s.params_by_force[force_name]['idx'] for s in self.systems]
+            # local_maps = [s.params_by_force[force_name].get('map') for s in self.systems]
+
+            local_maps = {s: s.params_by_force[force_name]['map'] for s in self.systems}
+            local_idxs = [
+                s.params_by_force[force_name]['idx'][local_maps[s][:, 0]]
+                for s in self.systems
+            ]
+            local_param_idxs = [local_maps[s][:, 1] for s in self.systems]
+
+            global_atom_idx, term_to_system = local_to_global_idxs(
+                local_idxs, self.natoms_per_system, device=device
+            )
+                  
+            if force_name == "DihedralForce":
+                # map dihedral pairs to global pairs indices (three edges per dihedral)
+                dihedral_pair_maps = torch.stack([
+                    match_pair_indices(self.global_pair_idx,
+                                       global_atom_idx[:, [i, i + 1]],
+                                       max_atom=self.total_atoms)
+                    for i in range(3)
+                ], dim=1)  # shape (n_dihedrals, 3)
+
+                nterms_per_system = torch.tensor([local_idx.shape[0] for local_idx in local_idxs],
+                                                  device=self.device)
+
+                term_to_param_idx, param_to_system = local_to_global_idxs(
+                                                    local_param_idxs, nterms_per_system, device=device
+                                                )
+
+                # combine per-system param maps into single tensor
+                # term_to_param_idx = torch.cat([m[:, 1:2] for m in local_maps], dim=0).squeeze(1)
+
+                # expand dihedral maps to per-term maps
+                # term_to_pair = dihedral_pair_maps[term_to_param_idx]           # (n_terms,3)
+                # term_global_atom_idx = global_atom_idx[term_to_param_idx]      # (n_terms,4)
+                # term_to_system_expanded = term_to_system[term_to_param_idx]     # (n_terms,)
+
+                self.term_to_pair_by_force[force_name] = dihedral_pair_maps
+                self.global_atom_idx_by_force[force_name] = global_atom_idx
+                self.term_to_system_by_force[force_name] = term_to_system
+                self.term_to_param_idx_by_force[force_name] = term_to_param_idx
+                # print(term_to_param_idx.shape)
+
+            else:
+                # 2-body forces: direct mapping
+                term_to_pair = match_pair_indices(
+                    self.global_pair_idx, global_atom_idx, self.total_atoms
+                )  # (n_terms,)
+
+                self.term_to_pair_by_force[force_name] = term_to_pair
+                self.global_atom_idx_by_force[force_name] = global_atom_idx
+                self.term_to_system_by_force[force_name] = term_to_system
+                self.term_to_param_idx_by_force[force_name] = None
+
+
+
         # RepulsionCGForce = all nonbonded intra-system pairs
-        bond_pairs_set = set(map(tuple, self.pair_idx_by_force["BondForce"].tolist()))
+        bond_pairs_set = set( self.term_to_pair_by_force["BondForce"].tolist() )
         repulsion_pairs_set = all_pairs_set - bond_pairs_set
         repulsion_pair_idx = torch.tensor(sorted(list(repulsion_pairs_set)), dtype=torch.long, device=device)
-    
-        self.pair_idx_by_force["RepulsionCGForce"] = repulsion_pair_idx
-        self.pair_map_by_force["RepulsionCGForce"] = match_pair_indices(self.global_pair_idx, repulsion_pair_idx, max_atom=self.total_atoms)
 
-        
+        # self.term_to_pair_by_force["RepulsionCGForce"] = match_pair_indices(
+        #     self.global_pair_idx, repulsion_pair_idx, max_atom=self.total_atoms
+        # )
+        self.term_to_pair_by_force["RepulsionCGForce"] = repulsion_pair_idx
+        self.global_atom_idx_by_force["RepulsionCGForce"] = self.global_pair_idx[repulsion_pair_idx]
+        self.term_to_system_by_force["RepulsionCGForce"] = self.pair_to_system[repulsion_pair_idx]
+        self.term_to_param_idx_by_force["RepulsionCGForce"] = None
+
     def _build_force_terms(self):
         force_modules_list = []
-    
-        for force_name, pair_idx in self.pair_idx_by_force.items():
+
+        for force_name in self._force_terms_set:
             force_cls = fiumd.forces.Force.registry[force_name]
-            force_idx_map = match_pair_indices(
-                unique_pairs=self.global_pair_idx,
-                target_pairs=pair_idx,
-                max_atom=self.total_atoms
-            )
-    
-            # FIX: New dict per force
+
             kwarg_params = {}
-    
             for key in self._param_names_by_force[force_name]:
-    
                 if key == "B":
-                    B = merge_B_matrices(self.systems, self.atom_type_map,
-                                        device=self.device)
+                    B = merge_B_matrices(self.systems, self.atom_type_map, device=self.device)
                     kwarg_params["B"] = B.to(self.device)
-                    continue
-    
-                key_list = [s.params_by_force[force_name][key] for s in self.systems]
-                kwarg_params[key] = torch.cat(key_list, dim=0).to(self.device)
-    
+                else:
+                    key_list = [s.params_by_force[force_name][key] for s in self.systems]
+                    kwarg_params[key] = torch.cat(key_list, dim=0).to(self.device)
+
             force_module = force_cls(
-                force_idx_map=force_idx_map,
-                global_pair_idx=self.global_pair_idx,
-                pair_to_system=self.pair_to_system,
+                term_to_pair=self.term_to_pair_by_force[force_name],
+                global_atom_idx=self.global_atom_idx_by_force[force_name],
+                term_to_system=self.term_to_system_by_force[force_name],
+                term_to_param_idx=self.term_to_param_idx_by_force.get(force_name),
                 atom_types=self.atom_type_indices,
-                kwarg_params=kwarg_params
+                kwarg_params=kwarg_params,
             )
-    
+
             force_modules_list.append(force_module)
 
         if self.nnp_model:
-            # model = load_model(self.nnp_model)
             force_module = fiumd.forces.TorchMDNetForce(
                 model=self.nnp_model,
                 embeddings=self.nnp_embeddings,
                 batch=self.atom_to_system,
                 device=self.device,
-                box=self.box[0].unsqueeze(1).expand(3,3)*torch.eye(3, device=self.device)
-                )
-            
+                box=self.box[0].unsqueeze(1).expand(3, 3) * torch.eye(3, device=self.device)
+            )
             force_modules_list.append(force_module)
-    
+
         return force_modules_list
+
 
 
     def _update_pairs_geometry_(self):
@@ -585,7 +612,6 @@ def match_pair_indices(unique_pairs: torch.Tensor,
     # Compute hashes
     unique_hashes = unique_pairs[:, 0] * max_atom + unique_pairs[:, 1]
     target_hashes = target_pairs[:, 0] * max_atom + target_pairs[:, 1]
-
     # Sort unique hashes
     sorted_hashes, sorted_indices = torch.sort(unique_hashes)
     
