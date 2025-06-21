@@ -56,11 +56,11 @@ class VelocityVerletIntegrator(Integrator):
 
         self._device = ensemble.device
         self._dtype = ensemble.dtype
-        self.dt = nn.parameters.Buffer( torch.tensor(dt / TIMEFACTOR) )
-        self.dv = nn.parameters.Buffer( torch.empty_like(ensemble.velocities),
-                                        persisten=False)
-        self.dx = nn.parameters.Buffer( torch.empty_like(ensemble.velocities),
-                                        persisten=False)
+        self.dt = nn.parameter.Buffer( torch.tensor(dt / TIMEFACTOR) )
+        self.dv = nn.parameter.Buffer( torch.empty_like(ensemble.velocities),
+                                        persistent=False)
+        self.dx = nn.parameter.Buffer( torch.empty_like(ensemble.velocities),
+                                        persistent=False)
         
         # self.half_dt = 0.5 * dt
 
@@ -71,13 +71,14 @@ class VelocityVerletIntegrator(Integrator):
         # v(t + dt/2) = v(t) + (F(t)/m) * dt/2
         self.dv.copy_( ensemble.forces )
         self.dv.mul_( 0.5 * self.dt )
-        self.dv.mul_( ensemble.inv_masses.unsqueeze(-1) )
+        self.dv.mul_( ensemble.inv_masses )
         
         ensemble.velocities.add_(self.dv)
 
         # x(t + dt) = x(t) + v(t + dt/2) * dt
         self.dx.copy_(ensemble.velocities)
         self.dx.mul_(self.dt)
+        
         ensemble.positions.add_(self.dx)
 
         # Update geometry (e.g. bond vectors, unit directions, etc.)
@@ -89,7 +90,7 @@ class VelocityVerletIntegrator(Integrator):
         # v(t + dt) = v(t + dt/2) + (F(t + dt)/m) * dt/2
         self.dv.copy_(ensemble.forces)
         self.dv.mul_(self.dt)
-        self.dv.mul_( 0.5 * ensemble.inv_masses.unsqueeze(-1) )
+        self.dv.mul_( 0.5 * ensemble.inv_masses )
         ensemble.velocities.add_( self.dv )
 
 

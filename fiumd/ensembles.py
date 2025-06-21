@@ -300,6 +300,8 @@ class Ensemble(nn.Module):
                 kwarg_params=kwarg_params,
             )
 
+            force_module.eval()
+
             force_modules_list.append(force_module)
 
         if self.nnp_model:
@@ -367,27 +369,55 @@ class Ensemble(nn.Module):
         self.zero_forces_()
 
         if inplace:
-            for force in self.force_modules:
-                force(self, inplace=True)
+            # TorchMDNetForce: must compute with autograd enabled
+            for f in self.force_modules:
+                if isinstance(f, fiumd.forces.TorchMDNetForce):
+                    f(self, inplace=True)
+                    # print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
+                    # raise RuntimeError("NaN detected in forces or energy")
+
+            # All other forces: can run inside inference_mode
+            with torch.inference_mode():
+                for f in self.force_modules:
+                    if not isinstance(f, fiumd.forces.TorchMDNetForce):
+                        f(self, inplace=True)
+                        if f.forces.isnan().any():
+                            print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
+                            raise RuntimeError("NaN detected in forces or energy")
             return None
         else:
             results = {}
-            for force in self.force_modules:
-                pot, force_tensor = force(self, inplace=False)
-                results[force.name] = (pot, force_tensor)
+            for f in self.force_modules:
+                if isinstance(f, fiumd.forces.TorchMDNetForce):
+                    pot, force_tensor = f(self, inplace=False)
+                    results[f.name] = (pot, force_tensor)
+      
+            with torch.inference_mode():
+                for f in self.force_modules:
+                    if not isinstance(f, fiumd.forces.TorchMDNetForce):
+                        pot, force_tensor = f(self, inplace=False)
+                        results[f.name] = (pot, force_tensor)
+                        if f.forces.isnan().any():
+                            print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
+                            raise RuntimeError("NaN detected in forces or energy")   
+                        
             return results
         
     def set_positions(self, positions: torch.Tensor):
         assert positions.shape == self.positions.shape, \
             f"Expected shape {self.positions.shape}, got {positions.shape}"
-        self.positions = positions.to(self.device, self.dtype)
+        self.positions = positions.detach().to(self.device, self.dtype)
+        # self.positions.requires_grad_(False)
+
         self._update_pairs_geometry_()
         self.compute_forces()  # Initialize forces consistent with the new positions
+        self.forces.requires_grad_(False)
         
     def set_velocities(self, velocities: torch.Tensor):
         assert velocities.shape == self.velocities.shape, \
             f"Expected shape {self.velocities.shape}, got {velocities.shape}"
         self.velocities = velocities.to(self.device, self.dtype)
+        self.velocities.requires_grad_(False)
 
 
     def set_box(self, box: torch.Tensor):

@@ -76,7 +76,7 @@ class BondForce(Force):
         # Derived indices
         self.pot = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0]), persistent=False)
         self.x = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0]), persistent=False)
-        self.force = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0],3), persistent=False)
+        self.forces = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0],3), persistent=False)
 
     @classmethod
     def build_params(cls,
@@ -126,12 +126,10 @@ class BondForce(Force):
         self.pot.copy_(self.x)        # (nbonds,)
         self.pot.mul_(self.k)
         
-        self.force.copy_(ensemble.pairs_unitvec[self.term_to_pair])      # (nbonds, 3)
-        self.force.mul_( 2 * self.pot.unsqueeze(-1) ) # here self.pot is just k*x
+        self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])      # (nbonds, 3)
+        self.forces.mul_( 2 * self.pot.unsqueeze(-1) ) # here self.pot is just k*x
 
         self.pot.mul_(self.x)
-
-
         
         if inplace:
             # Accumulate bond potential energy into the ensemble's energy tensor,
@@ -140,10 +138,10 @@ class BondForce(Force):
 
             # Accumulate forces on the atoms involved in each bond:
             # For the first atom in the pair, subtract the bond force vector
-            ensemble.forces.index_add_(0, self.global_atom_idx[:, 0], -self.force)
+            ensemble.forces.index_add_(0, self.global_atom_idx[:, 0], -self.forces)
 
             # For the second atom in the pair, add the bond force vector
-            ensemble.forces.index_add_(0, self.global_atom_idx[:, 1], +self.force)
+            ensemble.forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
 
             # No return needed since ensemble is updated in-place
             return None
@@ -158,10 +156,10 @@ class BondForce(Force):
 
             # Accumulate forces on the atoms involved in each bond:
             # For the first atom in the pair, subtract the bond force vector
-            forces.index_add_(0, self.global_atom_idx[:, 0], -self.force)
+            forces.index_add_(0, self.global_atom_idx[:, 0], -self.forces)
 
             # For the second atom in the pair, add the bond force vector
-            forces.index_add_(0, self.global_atom_idx[:, 1], +self.force)
+            forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
             return energy, forces
             
     def info(self):
@@ -213,7 +211,7 @@ class RepulsionCGForce(Force):
         # Temporary buffers (non-persistent)
         npairs = self.term_to_pair.shape[0]
         self.pot = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
-        self.force = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
+        self.forces = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
         self.rinv1 = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
         self.rinv6 = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
 
@@ -257,20 +255,20 @@ class RepulsionCGForce(Force):
         self.pot.copy_(self.coef).mul_(self.rinv6).div_(self.scale)   # V_CG = B * (1/r)^6 / scale
 
         # F = -6 * B / r^7 / scale = -6 * V_CG / r * unitvec
-        self.force.copy_(ensemble.pairs_unitvec[self.term_to_pair])
-        self.force.mul_(-6).mul_(self.pot.unsqueeze(-1)).mul_(self.rinv1.unsqueeze(-1))
+        self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])
+        self.forces.mul_(-6).mul_(self.pot.unsqueeze(-1)).mul_(self.rinv1.unsqueeze(-1))
 
         if inplace:
             ensemble.energy.index_add_(0, self.term_to_system, self.pot)
-            ensemble.forces.index_add_(0, self.global_atom_idx[:, 0], -self.force)
-            ensemble.forces.index_add_(0, self.global_atom_idx[:, 1], +self.force)
+            ensemble.forces.index_add_(0, self.global_atom_idx[:, 0], -self.forces)
+            ensemble.forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
             return None
         else:
             energy = torch.zeros_like(ensemble.energy)
             forces = torch.zeros_like(ensemble.forces)
             energy.index_add_(0, self.term_to_system, self.pot)
-            forces.index_add_(0, self.global_atom_idx[:, 0], -self.force)
-            forces.index_add_(0, self.global_atom_idx[:, 1], +self.force)
+            forces.index_add_(0, self.global_atom_idx[:, 0], -self.forces)
+            forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
             return energy, forces
 
 
@@ -301,22 +299,22 @@ class TorchMDNetForce(Force):
         self.batch = nn.parameter.Buffer(batch)
 
         # self.pot = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
-        # self.force = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
+        # self.forces = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
 
     def forward(self, ensemble, inplace=True):
         
-
         energy, forces = self.model(self.embeddings,
-                                    ensemble.positions,
+                                    ensemble.positions.detach(),
                                     self.batch, self.box)
+        
         # energy, forces = self.output_transformer(
         #     energy.detach(),
         #     forces.detach().reshape(-1, self.n_atoms, 3)
         # )
 
         if inplace:
-            ensemble.energy.add_(energy.squeeze())
-            ensemble.forces.add_(forces)
+            ensemble.energy.add_(energy.detach().squeeze())
+            ensemble.forces.add_(forces.detach())
             return None
         else:
             return energy, forces
