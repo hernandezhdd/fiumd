@@ -368,29 +368,15 @@ class Ensemble(nn.Module):
         self.zero_forces_()
 
         if inplace:
-            # TorchMDNetForce: must compute with autograd enabled
             for f in self.force_modules:
-                if isinstance(f, fiumd.forces.TorchMDNetForce):
-                    f(self, inplace=True)
+                f(self, inplace=True)
 
-            # All other forces: can run inside inference_mode
-            with torch.inference_mode():
-                for f in self.force_modules:
-                    if not isinstance(f, fiumd.forces.TorchMDNetForce):
-                        f(self, inplace=True)
             return None
         else:
             results = {}
             for f in self.force_modules:
-                if isinstance(f, fiumd.forces.TorchMDNetForce):
-                    pot, force_tensor = f(self, inplace=False)
-                    results[f.name] = (pot, force_tensor)
-      
-            with torch.inference_mode():
-                for f in self.force_modules:
-                    if not isinstance(f, fiumd.forces.TorchMDNetForce):
-                        pot, force_tensor = f(self, inplace=False)
-                        results[f.name] = (pot, force_tensor)
+                pot, force_tensor = f(self, inplace=False)
+                results[f.name] = (pot, force_tensor)
                         
             return results
         
@@ -398,7 +384,7 @@ class Ensemble(nn.Module):
         assert positions.shape == self.positions.shape, \
             f"Expected shape {self.positions.shape}, got {positions.shape}"
         self.positions = positions.detach().to(self.device, self.dtype)
-        # self.positions.requires_grad_(False)
+        self.positions.requires_grad_(True)
 
         self._update_pairs_geometry_()
         self.compute_forces()  # Initialize forces consistent with the new positions

@@ -119,17 +119,18 @@ class BondForce(Force):
         """
         
         # Evaluate bond potentials and forces using distances and unit vectors from the ensemble
-        self.x.copy_(ensemble.pairs_distances[self.term_to_pair]) # (nbonds,)
-        self.x.sub_(self.r0)
-
-        # self.pot initially holds k*x, becomes k*x^2 after mul_
-        self.pot.copy_(self.x)        # (nbonds,)
-        self.pot.mul_(self.k)
-        
-        self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])      # (nbonds, 3)
-        self.forces.mul_( 2 * self.pot.unsqueeze(-1) ) # here self.pot is just k*x
-
-        self.pot.mul_(self.x)
+        with torch.inference_mode():
+            self.x.copy_(ensemble.pairs_distances[self.term_to_pair]) # (nbonds,)
+            self.x.sub_(self.r0)
+    
+            # self.pot initially holds k*x, becomes k*x^2 after mul_
+            self.pot.copy_(self.x)        # (nbonds,)
+            self.pot.mul_(self.k)
+            
+            self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])      # (nbonds, 3)
+            self.forces.mul_( 2 * self.pot.unsqueeze(-1) ) # here self.pot is just k*x
+    
+            self.pot.mul_(self.x)
         
         if inplace:
             # Accumulate bond potential energy into the ensemble's energy tensor,
@@ -251,15 +252,16 @@ class RepulsionCGForce(Force):
         - None if inplace=True
         - Tuple (energy, forces) if inplace=False
         """
-        self.rinv1.copy_(ensemble.pairs_distances[self.term_to_pair])  # (npairs,)
-        self.rinv1.reciprocal_()                                       # 1/r
-        self.rinv6.copy_(self.rinv1).pow_(6)                           # 1/r^6
-
-        self.pot.copy_(self.coef).mul_(self.rinv6).div_(self.scale)   # V_CG = B * (1/r)^6 / scale
-
-        # F = -6 * B / r^7 / scale = -6 * V_CG / r * unitvec
-        self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])
-        self.forces.mul_(-6).mul_(self.pot.unsqueeze(-1)).mul_(self.rinv1.unsqueeze(-1))
+        with torch.inference_mode():
+            self.rinv1.copy_(ensemble.pairs_distances[self.term_to_pair])  # (npairs,)
+            self.rinv1.reciprocal_()                                       # 1/r
+            self.rinv6.copy_(self.rinv1).pow_(6)                           # 1/r^6
+    
+            self.pot.copy_(self.coef).mul_(self.rinv6).div_(self.scale)   # V_CG = B * (1/r)^6 / scale
+    
+            # F = -6 * B / r^7 / scale = -6 * V_CG / r * unitvec
+            self.forces.copy_(ensemble.pairs_unitvec[self.term_to_pair])
+            self.forces.mul_(-6).mul_(self.pot.unsqueeze(-1)).mul_(self.rinv1.unsqueeze(-1))
 
         if inplace:
             ensemble.energy.index_add_(0, self.term_to_system, self.pot)
@@ -282,51 +284,120 @@ class RepulsionCGForce(Force):
 
 
 class TorchMDNetForce(Force):
-    def __init__(self,
-                 model: nn.Module,
-                 embeddings: torch.Tensor,
-                 batch: torch.Tensor,
-                 # output_transform=None,
-                 dtype=torch.float32,
-                 device="cpu",
-                 box=None, 
-                ):
-
+    def __init__(
+        self,
+        model: nn.Module,
+        embeddings: torch.Tensor,
+        batch: torch.Tensor,
+        dtype=torch.float32,
+        device="cpu",
+        box=None,
+    ):
         super().__init__("TorchMDNet")
+        # Put model in eval mode and move to device
         self.model = model.eval().to(device)
-        # self.device = device
         self.dtype = dtype
-        # box = getattr(ensemble, "box", None)
+        # Freeze model parameters so only positions require grad
+        for p in self.model.parameters():
+            p.requires_grad_(False)
 
-        self.box = nn.parameter.Buffer(box.to(self.dtype)) if box is not None else None
-
-        # self.output_transformer = (
-        #     lambda e, f: (e, f) if output_transform is None else output_transform
-        # )
-
+        # Register buffers
+        self.box = nn.parameter.Buffer(
+            box.to(self.dtype)
+        ) if box is not None else None
         self.embeddings = nn.parameter.Buffer(embeddings)
         self.batch = nn.parameter.Buffer(batch)
 
-        # self.pot = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
-        # self.forces = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
-
     def forward(self, ensemble, inplace=True):
-        
-        energy, forces = self.model(self.embeddings,
-                                    ensemble.positions.detach(),
-                                    self.batch, self.box)
-        
-        # energy, forces = self.output_transformer(
-        #     energy.detach(),
-        #     forces.detach().reshape(-1, self.n_atoms, 3)
-        # )
+        # Ensure positions require grad
+        pos = ensemble.positions
+        pos.requires_grad_(True)
 
+        # 1) Forward through model (normal grad tracking)
+        energy, _ = self.model(
+            self.embeddings,
+            pos,
+            self.batch,
+            self.box,
+        )
+
+        # 2) Compute forces as negative gradient w.r.t. positions
+        forces = -torch.autograd.grad(
+            energy,
+            pos,
+            grad_outputs=torch.ones_like(energy),
+            create_graph=False,
+            retain_graph=False,
+        )[0]
+
+        # 3) Accumulate into the ensemble
         if inplace:
             ensemble.energy.add_(energy.detach().squeeze())
-            ensemble.forces.add_(forces.detach())
+            ensemble.forces.add_(forces)
             return None
         else:
             return energy, forces
+
+
+# class TorchMDNetForce(Force):
+#     def __init__(self,
+#                  model: nn.Module,
+#                  embeddings: torch.Tensor,
+#                  batch: torch.Tensor,
+#                  # output_transform=None,
+#                  dtype=torch.float32,
+#                  device="cpu",
+#                  box=None, 
+#                 ):
+
+#         super().__init__("TorchMDNet")
+#         self.model = model.eval().to(device)
+#         # self.device = device
+#         self.dtype = dtype
+#         # box = getattr(ensemble, "box", None)
+
+#         self.box = nn.parameter.Buffer(box.to(self.dtype)) if box is not None else None
+
+#         # self.output_transformer = (
+#         #     lambda e, f: (e, f) if output_transform is None else output_transform
+#         # )
+
+#         self.embeddings = nn.parameter.Buffer(embeddings)
+#         self.batch = nn.parameter.Buffer(batch)
+
+#         # self.pot = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
+#         # self.forces = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
+
+#     def forward(self, ensemble, inplace=True):
+#         # 1) Enable no-grad for model weights/buffers:
+#         with torch.inference_mode():
+#             # We still keep requires_grad on positions so we can take grad below
+#             energy, _ = self.model(
+#                 self.embeddings,
+#                 ensemble.positions,
+#                 self.batch,
+#                 self.box,
+#             )
+
+#         # 2) Compute forces as negative gradient w.r.t. positions
+#         #    NOTE: create_graph=False since we don't need higher-order grads
+#         forces = -torch.autograd.grad(
+#             energy,
+#             ensemble.positions,
+#             grad_outputs=torch.ones_like(energy),
+#             create_graph=False,
+#             retain_graph=False,
+#         )[0]
+
+#         # 3) Accumulate into the ensemble
+#         if inplace:
+#             # Add energy (we detach since we only need the value):
+#             ensemble.energy.add_(energy.detach().squeeze())
+#             # Add forces (already detached from model weights):
+#             ensemble.forces.add_(forces)
+#             return None
+#         else:
+#             return energy, forces
 
     def attrs_info(self):
         fiumd.utils.attrs_info(self)
@@ -364,18 +435,19 @@ class DihedralForce(Force):
         return system.params.dihedral_params
 
     def forward(self, ensemble, inplace=True):
-        evaluate_torsion_into(
-            self.pot,
-            self.forces,
-            all_relative_positions=ensemble.pairs_relative_positions,
-            all_distances=ensemble.pairs_distances,
-            dihedral_idx_map=self.term_to_pair,
-            torsion_param_map=self.term_to_param_idx,
-            k=self.k,
-            phi0=self.phi0,
-            periodicity=self.periodicity,
-        )
-
+        with torch.inference_mode():
+            evaluate_torsion_into(
+                self.pot,
+                self.forces,
+                all_relative_positions=ensemble.pairs_relative_positions,
+                all_distances=ensemble.pairs_distances,
+                dihedral_idx_map=self.term_to_pair,
+                torsion_param_map=self.term_to_param_idx,
+                k=self.k,
+                phi0=self.phi0,
+                periodicity=self.periodicity,
+            )
+    
         if inplace:
             ensemble.energy.index_add_(0, self.term_to_system, self.pot)
             ensemble.forces.index_add_(0,

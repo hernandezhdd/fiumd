@@ -1,6 +1,6 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-HTORCHMDHOME=$DIR/..
-export PYTHONPATH=$HTORCHMDHOME
+FIUMDHOME=$DIR/..
+export PYTHONPATH=$FIUMDHOME
 ARGS="${@:1}"
-python $HTORCHMDHOME/htorchmd/run.py $ARGS
+python $FIUMDHOME/fiumd/run.py $ARGS
