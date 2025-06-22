@@ -4,7 +4,7 @@ from fiumd.systems import System
 from moleculekit.molecule import Molecule
 from fiumd.forcefields.forcefield import ForceField
 from fiumd.parameters import Parameters
-from fiumd.forces_orig import Force
+from fiumd.forces_orig import Forces
 from fiumd.integrator import Integrator
 from fiumd.wrapper import Wrapper
 import numpy as np

@@ -550,10 +550,10 @@ def calculate_distances(atom_pos, atom_idx, box):
     return dist.squeeze(), direction_unitvec, direction_vec
 
 
-# ELEC_FACTOR = 1 / (4 * const.pi * const.epsilon_0)  # Coulomb's constant
-# ELEC_FACTOR *= const.elementary_charge**2  # Convert elementary charges to Coulombs
-# ELEC_FACTOR /= const.angstrom  # Convert Angstroms to meters
-# ELEC_FACTOR *= const.Avogadro / (const.kilo * const.calorie)  # Convert J to kcal/mol
+ELEC_FACTOR = 1 / (4 * const.pi * const.epsilon_0)  # Coulomb's constant
+ELEC_FACTOR *= const.elementary_charge**2  # Convert elementary charges to Coulombs
+ELEC_FACTOR /= const.angstrom  # Convert Angstroms to meters
+ELEC_FACTOR *= const.Avogadro / (const.kilo * const.calorie)  # Convert J to kcal/mol
 
 
 def evaluate_LJ(
