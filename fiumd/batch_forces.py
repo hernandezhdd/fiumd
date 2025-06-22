@@ -1,4 +1,4 @@
-# from scipy import constants as const
+from scipy import constants as const
 import torch
 import numpy as np
 from math import pi
@@ -278,27 +278,27 @@ class Forces:
         #     forces[i].index_add_(0, ava_idx[i, :, 0], -forcevec)
         #     forces[i].index_add_(0, ava_idx[i, :, 1], forcevec)
 
-        for i in range(nsystems):
-            spos = pos[i]
-            sbox = box[i][torch.eye(3).bool()]  # Use only the diagonal
+        # for i in range(nsystems):
+        #     spos = pos[i]
+        #     sbox = box[i][torch.eye(3).bool()]  # Use only the diagonal
 
-            if "angles" in self.energies and self.par.angle_params is not None:
-                angle_idx = self.par.angle_params["idx"]
-                param_idx = self.par.angle_params["map"][:, 1]
-                _, _, r21 = calculate_distances(spos, angle_idx[:, [0, 1]], sbox)
-                _, _, r23 = calculate_distances(spos, angle_idx[:, [2, 1]], sbox)
-                E, angle_forces = evaluate_angles(
-                    r21,
-                    r23,
-                    self.par.angle_params["params"][param_idx],
-                    explicit_forces,
-                )
+        #     if "angles" in self.energies and self.par.angle_params is not None:
+        #         angle_idx = self.par.angle_params["idx"]
+        #         param_idx = self.par.angle_params["map"][:, 1]
+        #         _, _, r21 = calculate_distances(spos, angle_idx[:, [0, 1]], sbox)
+        #         _, _, r23 = calculate_distances(spos, angle_idx[:, [2, 1]], sbox)
+        #         E, angle_forces = evaluate_angles(
+        #             r21,
+        #             r23,
+        #             self.par.angle_params["params"][param_idx],
+        #             explicit_forces,
+        #         )
 
-                pot[i]["angles"] = pot[i]["angles"] + E.sum()
-                if explicit_forces:
-                    forces[i].index_add_(0, angle_idx[:, 0], angle_forces[0])
-                    forces[i].index_add_(0, angle_idx[:, 1], angle_forces[1])
-                    forces[i].index_add_(0, angle_idx[:, 2], angle_forces[2])
+        #         pot[i]["angles"] = pot[i]["angles"] + E.sum()
+        #         if explicit_forces:
+        #             forces[i].index_add_(0, angle_idx[:, 0], angle_forces[0])
+        #             forces[i].index_add_(0, angle_idx[:, 1], angle_forces[1])
+        #             forces[i].index_add_(0, angle_idx[:, 2], angle_forces[2])
 
             # if "dihedrals" in self.energies and self.par.dihedral_params is not None:
             #     dihed_idx = self.par.dihedral_params["idx"]
@@ -325,141 +325,141 @@ class Forces:
             #         forces[i].index_add_(0, dihed_idx[:, 2], dihedral_forces[2])
             #         forces[i].index_add_(0, dihed_idx[:, 3], dihedral_forces[3])
 
-            if "1-4" in self.energies and self.par.nonbonded_14_params is not None:
-                idx14 = self.par.nonbonded_14_params["idx"]
-                nb_dist, nb_unitvec, _ = calculate_distances(spos, idx14, sbox)
+            # if "1-4" in self.energies and self.par.nonbonded_14_params is not None:
+            #     idx14 = self.par.nonbonded_14_params["idx"]
+            #     nb_dist, nb_unitvec, _ = calculate_distances(spos, idx14, sbox)
 
-                nonbonded_14_params = self.par.nonbonded_14_params["params"]
+            #     nonbonded_14_params = self.par.nonbonded_14_params["params"]
 
-                if self.cutoff is not None:
-                    (
-                        nb_dist,
-                        nb_unitvec,
-                        nonbonded_14_params,
-                        idx14,
-                    ) = self._filter_by_cutoff(
-                        nb_dist,
-                        (
-                            nb_dist,
-                            nb_unitvec,
-                            self.par.nonbonded_14_params,
-                            self.par.idx14,
-                        ),
-                    )
-                prm_idx = self.par.nonbonded_14_params["map"][:, 1]
-                aa = nonbonded_14_params[prm_idx, 0]
-                bb = nonbonded_14_params[prm_idx, 1]
-                scnb = nonbonded_14_params[prm_idx, 2]
-                scee = nonbonded_14_params[prm_idx, 3]
+            #     if self.cutoff is not None:
+            #         (
+            #             nb_dist,
+            #             nb_unitvec,
+            #             nonbonded_14_params,
+            #             idx14,
+            #         ) = self._filter_by_cutoff(
+            #             nb_dist,
+            #             (
+            #                 nb_dist,
+            #                 nb_unitvec,
+            #                 self.par.nonbonded_14_params,
+            #                 self.par.idx14,
+            #             ),
+            #         )
+            #     prm_idx = self.par.nonbonded_14_params["map"][:, 1]
+            #     aa = nonbonded_14_params[prm_idx, 0]
+            #     bb = nonbonded_14_params[prm_idx, 1]
+            #     scnb = nonbonded_14_params[prm_idx, 2]
+            #     scee = nonbonded_14_params[prm_idx, 3]
 
-                if "lj" in self.energies:
-                    E, force_coeff = evaluate_LJ_internal(
-                        nb_dist, aa, bb, scnb, None, None, explicit_forces
-                    )
-                    pot[i]["lj"] = pot[i]["lj"] + E.sum()
-                    if explicit_forces:
-                        forcevec = nb_unitvec * force_coeff[:, None]
-                        forces[i].index_add_(0, idx14[:, 0], -forcevec)
-                        forces[i].index_add_(0, idx14[:, 1], forcevec)
-                if "electrostatics" in self.energies:
-                    E, force_coeff = evaluate_electrostatics(
-                        nb_dist,
-                        idx14,
-                        self.par.charges,
-                        scee,
-                        cutoff=None,
-                        rfa=False,
-                        solventDielectric=self.solventDielectric,
-                        explicit_forces=explicit_forces,
-                    )
-                    pot[i]["electrostatics"] = pot[i]["electrostatics"] + E.sum()
-                    if explicit_forces:
-                        forcevec = nb_unitvec * force_coeff[:, None]
-                        forces[i].index_add_(0, idx14[:, 0], -forcevec)
-                        forces[i].index_add_(0, idx14[:, 1], forcevec)
+            #     if "lj" in self.energies:
+            #         E, force_coeff = evaluate_LJ_internal(
+            #             nb_dist, aa, bb, scnb, None, None, explicit_forces
+            #         )
+            #         pot[i]["lj"] = pot[i]["lj"] + E.sum()
+            #         if explicit_forces:
+            #             forcevec = nb_unitvec * force_coeff[:, None]
+            #             forces[i].index_add_(0, idx14[:, 0], -forcevec)
+            #             forces[i].index_add_(0, idx14[:, 1], forcevec)
+            #     if "electrostatics" in self.energies:
+            #         E, force_coeff = evaluate_electrostatics(
+            #             nb_dist,
+            #             idx14,
+            #             self.par.charges,
+            #             scee,
+            #             cutoff=None,
+            #             rfa=False,
+            #             solventDielectric=self.solventDielectric,
+            #             explicit_forces=explicit_forces,
+            #         )
+            #         pot[i]["electrostatics"] = pot[i]["electrostatics"] + E.sum()
+            #         if explicit_forces:
+            #             forcevec = nb_unitvec * force_coeff[:, None]
+            #             forces[i].index_add_(0, idx14[:, 0], -forcevec)
+            #             forces[i].index_add_(0, idx14[:, 1], forcevec)
 
-            if "impropers" in self.energies and self.par.improper_params is not None:
-                impr_idx = self.par.improper_params["idx"]
-                param_idx = self.par.improper_params["map"][:, 1]
-                _, _, r12 = calculate_distances(spos, impr_idx[:, [0, 1]], sbox)
-                _, _, r23 = calculate_distances(spos, impr_idx[:, [1, 2]], sbox)
-                _, _, r34 = calculate_distances(spos, impr_idx[:, [2, 3]], sbox)
-                E, improper_forces = evaluate_torsion(
-                    r12,
-                    r23,
-                    r34,
-                    self.par.improper_params["map"][:, 0],
-                    self.par.improper_params["params"][param_idx],
-                    explicit_forces,
-                )
+            # if "impropers" in self.energies and self.par.improper_params is not None:
+            #     impr_idx = self.par.improper_params["idx"]
+            #     param_idx = self.par.improper_params["map"][:, 1]
+            #     _, _, r12 = calculate_distances(spos, impr_idx[:, [0, 1]], sbox)
+            #     _, _, r23 = calculate_distances(spos, impr_idx[:, [1, 2]], sbox)
+            #     _, _, r34 = calculate_distances(spos, impr_idx[:, [2, 3]], sbox)
+            #     E, improper_forces = evaluate_torsion(
+            #         r12,
+            #         r23,
+            #         r34,
+            #         self.par.improper_params["map"][:, 0],
+            #         self.par.improper_params["params"][param_idx],
+            #         explicit_forces,
+            #     )
 
-                pot[i]["impropers"] = pot[i]["impropers"] + E.sum()
-                if explicit_forces:
-                    forces[i].index_add_(0, impr_idx[:, 0], improper_forces[0])
-                    forces[i].index_add_(0, impr_idx[:, 1], improper_forces[1])
-                    forces[i].index_add_(0, impr_idx[:, 2], improper_forces[2])
-                    forces[i].index_add_(0, impr_idx[:, 3], improper_forces[3])
+            #     pot[i]["impropers"] = pot[i]["impropers"] + E.sum()
+            #     if explicit_forces:
+            #         forces[i].index_add_(0, impr_idx[:, 0], improper_forces[0])
+            #         forces[i].index_add_(0, impr_idx[:, 1], improper_forces[1])
+            #         forces[i].index_add_(0, impr_idx[:, 2], improper_forces[2])
+            #         forces[i].index_add_(0, impr_idx[:, 3], improper_forces[3])
 
-            # Non-bonded terms
-            if self.require_distances and len(self.ava_idx):
-                # Lazy mode: Do all vs all distances
-                # TODO: These distance calculations are fucked once we do neighbourlists since they will vary per system!!!!
-                nb_dist, nb_unitvec, _ = calculate_distances(spos.unsqueeze(0), self.ava_idx.unsqueeze(0), sbox.unsqueeze(0))
-                ava_idx = self.ava_idx
-                if self.cutoff is not None:
-                    nb_dist, nb_unitvec, ava_idx = self._filter_by_cutoff(
-                        nb_dist, (nb_dist, nb_unitvec, ava_idx)
-                    )
+            # # Non-bonded terms
+            # if self.require_distances and len(self.ava_idx):
+            #     # Lazy mode: Do all vs all distances
+            #     # TODO: These distance calculations are fucked once we do neighbourlists since they will vary per system!!!!
+            #     nb_dist, nb_unitvec, _ = calculate_distances(spos.unsqueeze(0), self.ava_idx.unsqueeze(0), sbox.unsqueeze(0))
+            #     ava_idx = self.ava_idx
+            #     if self.cutoff is not None:
+            #         nb_dist, nb_unitvec, ava_idx = self._filter_by_cutoff(
+            #             nb_dist, (nb_dist, nb_unitvec, ava_idx)
+            #         )
 
-                for v in self.energies:
-                    if v == "electrostatics":
-                        E, force_coeff = evaluate_electrostatics(
-                            nb_dist,
-                            ava_idx,
-                            self.par.charges,
-                            cutoff=self.cutoff,
-                            rfa=self.rfa,
-                            solventDielectric=self.solventDielectric,
-                            explicit_forces=explicit_forces,
-                        )
-                        pot[i][v] = pot[i][v] + E.sum()
-                    elif v == "lj":
-                        E, force_coeff = evaluate_LJ(
-                            nb_dist,
-                            ava_idx,
-                            self.par.mapped_atom_types,
-                            self.par.A,
-                            self.par.B,
-                            self.switch_dist,
-                            self.cutoff,
-                            explicit_forces,
-                        )
-                        pot[i][v] = pot[i][v] + E.sum()
-                    elif v == "repulsion":
-                        E, force_coeff = evaluate_repulsion(
-                            nb_dist,
-                            ava_idx,
-                            self.par.mapped_atom_types,
-                            self.par.A,
-                            explicit_forces,
-                        )
-                        pot[i][v] = pot[i][v] + E.sum()
-                    # elif v == "repulsioncg":
-                    #     E, force_coeff = evaluate_repulsion_CG(
-                    #         nb_dist,
-                    #         ava_idx,
-                    #         self.par.mapped_atom_types,
-                    #         self.par.B,
-                    #         explicit_forces,
-                    #     )
-                    #     pot[i][v] = pot[i][v] + E.sum()
-                    else:
-                        continue
+            #     for v in self.energies:
+            #         if v == "electrostatics":
+            #             E, force_coeff = evaluate_electrostatics(
+            #                 nb_dist,
+            #                 ava_idx,
+            #                 self.par.charges,
+            #                 cutoff=self.cutoff,
+            #                 rfa=self.rfa,
+            #                 solventDielectric=self.solventDielectric,
+            #                 explicit_forces=explicit_forces,
+            #             )
+            #             pot[i][v] = pot[i][v] + E.sum()
+            #         elif v == "lj":
+            #             E, force_coeff = evaluate_LJ(
+            #                 nb_dist,
+            #                 ava_idx,
+            #                 self.par.mapped_atom_types,
+            #                 self.par.A,
+            #                 self.par.B,
+            #                 self.switch_dist,
+            #                 self.cutoff,
+            #                 explicit_forces,
+            #             )
+            #             pot[i][v] = pot[i][v] + E.sum()
+            #         elif v == "repulsion":
+            #             E, force_coeff = evaluate_repulsion(
+            #                 nb_dist,
+            #                 ava_idx,
+            #                 self.par.mapped_atom_types,
+            #                 self.par.A,
+            #                 explicit_forces,
+            #             )
+            #             pot[i][v] = pot[i][v] + E.sum()
+            #         # elif v == "repulsioncg":
+            #         #     E, force_coeff = evaluate_repulsion_CG(
+            #         #         nb_dist,
+            #         #         ava_idx,
+            #         #         self.par.mapped_atom_types,
+            #         #         self.par.B,
+            #         #         explicit_forces,
+            #         #     )
+            #         #     pot[i][v] = pot[i][v] + E.sum()
+            #         else:
+            #             continue
 
-                    if explicit_forces:
-                        forcevec = nb_unitvec * force_coeff[:, None]
-                        forces[i].index_add_(0, ava_idx[:, 0], -forcevec)
-                        forces[i].index_add_(0, ava_idx[:, 1], forcevec)
+            #         if explicit_forces:
+            #             forcevec = nb_unitvec * force_coeff[:, None]
+            #             forces[i].index_add_(0, ava_idx[:, 0], -forcevec)
+            #             forces[i].index_add_(0, ava_idx[:, 1], forcevec)
 
         if self.external:
         # ext_ene, ext_force = self.external.calculate(pos, box)
