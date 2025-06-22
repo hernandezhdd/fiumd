@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from fiumd.ensembles import Ensemble
+import fiumd
 
 # Constants
 TIMEFACTOR = 48.88821
@@ -19,7 +19,7 @@ class Integrator(nn.Module):
     def __init__(self):
         super().__init__()
         
-    def step(self, ensemble, dt):
+    def step(self, ensemble: fiumd.ensembles.Ensemble, dt):
         """
         Advance the ensemble state by one timestep of length dt.
         
@@ -51,9 +51,10 @@ class VelocityVerletIntegrator(Integrator):
       - .compute_forces() : method to recompute forces
     """
 
-    def __init__(self, dt: float, ensemble: Ensemble):
+    def __init__(self, dt: float, ensemble: fiumd.ensembles.Ensemble):
         super().__init__()
 
+        self.ensemble = ensemble
         self._device = ensemble.device
         self._dtype = ensemble.dtype
         self.dt = nn.parameter.Buffer( torch.tensor(dt / TIMEFACTOR) )
@@ -64,38 +65,42 @@ class VelocityVerletIntegrator(Integrator):
         
         # self.half_dt = 0.5 * dt
 
-    def step(self, ensemble):
+    def forward(self):
         """
         Advances the ensemble by one integration step using Velocity Verlet.
         """
         # v(t + dt/2) = v(t) + (F(t)/m) * dt/2
-        self.dv.copy_( ensemble.forces )
+        self.dv.copy_( self.ensemble.forces )
         self.dv.mul_( 0.5 * self.dt )
-        self.dv.mul_( ensemble.inv_masses )
+        self.dv.mul_( self.ensemble.inv_masses )
         
-        ensemble.velocities.add_(self.dv)
+        self.ensemble.velocities.add_(self.dv)
 
         # x(t + dt) = x(t) + v(t + dt/2) * dt
-        self.dx.copy_(ensemble.velocities)
+        self.dx.copy_(self.ensemble.velocities)
         self.dx.mul_(self.dt)
-        
-        ensemble.positions.add_(self.dx)
+        self.ensemble.positions.add_(self.dx)
 
         # Update geometry (e.g. bond vectors, unit directions, etc.)
-        ensemble._update_pairs_geometry_()
+        self.ensemble._update_pairs_geometry_()
 
         # F(t + dt)
-        ensemble.compute_forces()
+        self.ensemble.compute_forces()
 
         # v(t + dt) = v(t + dt/2) + (F(t + dt)/m) * dt/2
-        self.dv.copy_(ensemble.forces)
+        self.dv.copy_(self.ensemble.forces)
         self.dv.mul_(self.dt)
-        self.dv.mul_( 0.5 * ensemble.inv_masses )
-        ensemble.velocities.add_( self.dv )
+        self.dv.mul_( 0.5 * self.ensemble.inv_masses )
+        self.ensemble.velocities.add_( self.dv )
 
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
 
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
+        
 class LangevinThermostat(nn.Module):
-    def __init__(self, gamma, temperature, dt, ensemble: Ensemble):
+    def __init__(self, gamma, temperature, dt, ensemble: fiumd.ensembles.Ensemble):
         """
         Langevin thermostat for use in molecular dynamics simulations.
 
@@ -153,30 +158,30 @@ class LangevinThermostat(nn.Module):
     def set_dt(self, dt):
         """Set the timestep and update cached Langevin coefficients."""
         self.dt = torch.tensor(dt / TIMEFACTOR, device=self._device, dtype=self._dtype)
-        self._exp_factor = torch.exp(-self.gamma * dt)
-        
-        # self._noise_std = torch.sqrt(
-        #     (1 - self._exp_factor ** 2) * self.kB * self._temperature_per_atom
-        # ).expand(self._noise.shape)
-        molecule_inv_mass = self.ensemble.reduce_by_system(self.ensemble.masses, torch.sum)  # shape: (n_systems, 1)
-        molecule_inv_mass = molecule_inv_mass[self.ensemble.atom_to_system].unsqueeze(1)
+        self._exp_factor = torch.exp(-self.gamma * self.dt)
         
         self._noise_std = torch.sqrt(
-            2 * self.gamma * self.kB * self._temperature_per_atom * molecule_inv_mass * self.dt
+            (1 - self._exp_factor**2) * self.kB * self._temperature_per_atom / self.ensemble.masses
         ).expand(self._noise.shape)
-        
-        self._noise_mean = torch.zeros_like(self._noise)
 
-    def apply(self):
+        self._noise_mean = torch.zeros_like(self._noise_std)
+
+    def forward(self):
         """
         Applies the Langevin thermostat: velocity scaling and random noise.
         Should be called after velocity updates in each integration step.
         """
         torch.normal(self._noise_mean, self._noise_std,
                     out=self._noise)
-        # self._noise.normal_(0.0, 1.0)  # Unit Gaussian
-        # self._noise.mul_(self._noise_std)  # Scale by local std
+
         self.ensemble.velocities.mul_(self._exp_factor).add_(self._noise)
+
+
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
+
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
 
 
 def maxwell_boltzmann(masses, T, replicas=1):

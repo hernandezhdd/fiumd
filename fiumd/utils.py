@@ -7,11 +7,11 @@ import argparse
 import yaml
 import torch
 
-def info(module):
+def attrs_info(module):
     import inspect
     import torch.nn as nn
 
-    print("=== Ensemble Attributes ===\n")
+    print("=== Attributes ===\n")
 
     attrs = [
         attr for attr in dir(module)
@@ -43,6 +43,11 @@ def info(module):
             print(f"{attr_fmt} : ModuleList | length={len(value)}")
         else:
             print(f"{attr_fmt} : {type(value).__name__} | {value}")
+            
+                
+def methods_info(module):
+    import inspect
+    import torch.nn as nn
 
     print("\n=== Public Methods ===")
     print("\n• Inherits all methods from nn.Module (e.g., `.to()`, `.eval()`, etc.)")

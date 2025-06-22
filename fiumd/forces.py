@@ -162,8 +162,11 @@ class BondForce(Force):
             forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
             return energy, forces
             
-    def info(self):
-        fiumd.utils.info(self)
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
+
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
 
 
 class RepulsionCGForce(Force):
@@ -271,6 +274,12 @@ class RepulsionCGForce(Force):
             forces.index_add_(0, self.global_atom_idx[:, 1], +self.forces)
             return energy, forces
 
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
+
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
+
 
 class TorchMDNetForce(Force):
     def __init__(self,
@@ -319,9 +328,11 @@ class TorchMDNetForce(Force):
         else:
             return energy, forces
 
-            
-    def info(self):
-        fiumd.utils.info(self)
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
+
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
         
 class DihedralForce(Force):
     def __init__(self,
@@ -382,7 +393,13 @@ class DihedralForce(Force):
                               )
             return energy, forces
 
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
 
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
+
+        
 def evaluate_torsion_into(
     pot: torch.Tensor,
     forces: torch.Tensor,  # shape (n_terms, 4, 3)

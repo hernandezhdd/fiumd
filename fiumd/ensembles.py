@@ -349,7 +349,6 @@ class Ensemble(nn.Module):
         self.pairs_unitvec.div_(self.pairs_distances.unsqueeze(-1).clamp_min(1e-8))  # Avoid division by 0
 
 
-
     def compute_forces(self, inplace=True):
         """
         Compute forces and potential energy for all force terms.
@@ -373,17 +372,12 @@ class Ensemble(nn.Module):
             for f in self.force_modules:
                 if isinstance(f, fiumd.forces.TorchMDNetForce):
                     f(self, inplace=True)
-                    # print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
-                    # raise RuntimeError("NaN detected in forces or energy")
 
             # All other forces: can run inside inference_mode
             with torch.inference_mode():
                 for f in self.force_modules:
                     if not isinstance(f, fiumd.forces.TorchMDNetForce):
                         f(self, inplace=True)
-                        if f.forces.isnan().any():
-                            print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
-                            raise RuntimeError("NaN detected in forces or energy")
             return None
         else:
             results = {}
@@ -397,9 +391,6 @@ class Ensemble(nn.Module):
                     if not isinstance(f, fiumd.forces.TorchMDNetForce):
                         pot, force_tensor = f(self, inplace=False)
                         results[f.name] = (pot, force_tensor)
-                        if f.forces.isnan().any():
-                            print(f"[{f.name}] max|F| = {f.forces.abs().max().item()}, min|F| = {f.forces.abs().min().item()}, mean|F| = {f.forces.abs().mean().item()}")
-                            raise RuntimeError("NaN detected in forces or energy")   
                         
             return results
         
@@ -513,47 +504,13 @@ class Ensemble(nn.Module):
         return torch.stack(result, dim=0)
         
 
-    def info(self):
-        fiumd.utils.info(self)
+    def attrs_info(self):
+        fiumd.utils.attrs_info(self)
+
+    def methods_info(self):
+        fiumd.utils.methods_info(self)
     
 
-
-def update_quadruplet_positions_(quadruplet_positions, atom_positions, quadruplet_indices):
-    """
-    In-place update of dihedral quadruplet positions.
-
-    quadruplet_indices: (n_dihedrals, 4) of atom indices [i, j, k, l]
-    """
-    quadruplet_positions[:, :, 0].copy_(atom_positions[quadruplet_indices[:, 0]])
-    quadruplet_positions[:, :, 1].copy_(atom_positions[quadruplet_indices[:, 1]])
-    quadruplet_positions[:, :, 2].copy_(atom_positions[quadruplet_indices[:, 2]])
-    quadruplet_positions[:, :, 3].copy_(atom_positions[quadruplet_indices[:, 3]])
-
-def update_triplet_positions_(triplet_positions, atom_positions, triplet_indices):
-    """
-    In-place update of angle triplet positions.
-
-    triplet_indices: (n_triplets, 3) of atom indices [i, j, k]
-    """
-    triplet_positions[:, :, 0].copy_(atom_positions[triplet_indices[:, 0]])
-    triplet_positions[:, :, 1].copy_(atom_positions[triplet_indices[:, 1]])
-    triplet_positions[:, :, 2].copy_(atom_positions[triplet_indices[:, 2]])
-    
-def update_pairs_positions_(pairs_positions: torch.Tensor, atom_positions: torch.Tensor, pair_indices: torch.Tensor):
-    """
-    In-place update of pairwise atom positions for all interactions.
-
-    Parameters
-    ----------
-    pairs_positions : torch.Tensor
-        Shape: (n_pairs, 3, 2) — output tensor. [:, :, 0] is pos[i], [:, :, 1] is pos[j]
-    atom_positions : torch.Tensor
-        Shape: (n_all_atoms, 3) — current full atom positions
-    pair_indices : torch.Tensor
-        Shape: (n_pairs, 2) — global indices [i, j] for each interacting pair
-    """
-    pairs_positions[:, :, 0].copy_(atom_positions[pair_indices[:, 0]])
-    pairs_positions[:, :, 1].copy_(atom_positions[pair_indices[:, 1]])
 
 
 def update_pairs_geometry_(pairs_positions, box, pair_idx,
