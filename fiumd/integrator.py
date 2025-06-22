@@ -14,21 +14,14 @@ PICOSEC2TIMEU = 1000.0 / TIMEFACTOR
 class Integrator(nn.Module):
     """
     Abstract base class for integrators.
-    Subclasses should override the `step` method.
+    Subclasses should override the `forward` method.
     """
     def __init__(self):
         super().__init__()
         
-    def step(self, ensemble: fiumd.ensembles.Ensemble, dt):
+    def forward(self):
         """
         Advance the ensemble state by one timestep of length dt.
-        
-        Parameters
-        ----------
-        ensemble : Ensemble
-            The molecular system ensemble to integrate.
-        dt : float
-            Time step size.
         """
         raise NotImplementedError("Integrator subclasses must implement the step method.")
 
