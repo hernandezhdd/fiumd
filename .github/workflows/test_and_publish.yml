@@ -47,34 +47,34 @@ jobs:
         run: |
           python tests/test_torchmd.py
 
-  deploypypi:
-    if: startsWith(github.event.ref, 'refs/tags/')
-    needs: test
-    runs-on: ${{ matrix.os }}
+  # deploypypi:
+  #   if: startsWith(github.event.ref, 'refs/tags/')
+  #   needs: test
+  #   runs-on: ${{ matrix.os }}
 
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ["ubuntu-latest"]
-        python-version: ["3.9"]
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os: ["ubuntu-latest"]
+  #       python-version: ["3.9"]
 
-    steps:
-      - uses: actions/checkout@v4
+  #   steps:
+  #     - uses: actions/checkout@v4
 
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: deploy
-          python-version: ${{ matrix.python-version }}
-          miniforge-version: latest
-          conda-remove-defaults: true
+  #     - uses: conda-incubator/setup-miniconda@v3
+  #       with:
+  #         activate-environment: deploy
+  #         python-version: ${{ matrix.python-version }}
+  #         miniforge-version: latest
+  #         conda-remove-defaults: true
 
-      - name: Build PyPI 📦
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine versioneer==0.28
-          python -m build
+  #     - name: Build PyPI 📦
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install build twine versioneer==0.28
+  #         python -m build
 
-      - name: Publish distribution 📦 to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PUBLIC_PYPI_API_TOKEN }}
+  #     - name: Publish distribution 📦 to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         password: ${{ secrets.PUBLIC_PYPI_API_TOKEN }}
