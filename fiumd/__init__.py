@@ -19,6 +19,7 @@ from . import forcefields
 from . import forces_orig
 from . import systems_orig
 from . import integrator_orig
+from . import wrapper_orig
 
 # # Optional: version info
 # from ._version import __version__

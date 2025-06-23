@@ -126,7 +126,9 @@ class Ensemble(nn.Module):
         self.masses = torch.cat([s.params.masses.to(self.device, self.dtype) for s in systems], dim=0)
         self.inv_masses = 1.0 / self.masses
 
-        self.positions = torch.zeros((self.total_atoms, 3), device=self.device, dtype=self.dtype)
+        self.positions = torch.zeros((self.total_atoms, 3),
+                                     requires_grad=False,
+                                     device=self.device, dtype=self.dtype)
         self.velocities = torch.zeros_like(self.positions)
         self.forces = torch.zeros_like(self.positions)
         self.energy = torch.zeros(self.nsystems, device=self.device, dtype=self.dtype)
@@ -145,21 +147,9 @@ class Ensemble(nn.Module):
         self._pbc_offset = torch.empty((self.n_pairs, 3), device=self.device, dtype=self.dtype)
         
 
-        # Assume build_dihedral_params returns something like (n_dihedral_terms, param_dim)
-        # self.dihedral_params = build_dihedral_params(...)
-        # self.n_triplets = None
-        # self.n_dihedrals = self.global_dihedral_indices.shape[0]
-        # self.n_dihedral_terms = self.dihedral_params.shape[0]
         self.nl_builder = fiumd.neighbours.NeighbourListBuilder(n_pairs=self.n_pairs, cutoff=cutoff, device=self.device, dtype=self.dtype)
 
-        # self.triplet_positions = torch.empty((self.n_triplets, 3, 3),
-        #                                      device=self.device,
-        #                                      dtype=self.dtype)
         self.force_modules = nn.ModuleList(self._build_force_terms())
-
-        # self.quadruplet_positions = torch.empty((n_dihedrals, 3, 4),
-        #                                         device=self.device,
-        #                                         dtype=self.dtype)
     
     @property
     def centers_of_geom(self):
@@ -169,7 +159,7 @@ class Ensemble(nn.Module):
     @property
     def centers_of_mass(self):
         total_system_inv_mass = 1.0 / self.reduce_by_system(self.masses, torch.sum, dim=0).unsqueeze(-1)
-        self.centers_of_mass_ = total_system_inv_mass * self.reduce_by_system(self.positions * self.masses.unsqueeze(-1), torch.sum, dim=0)  # atomwise mean xyz
+        self.centers_of_mass_ = total_system_inv_mass * self.reduce_by_system(self.positions * self.masses, torch.sum, dim=0)  # atomwise mean xyz
         return self.centers_of_mass_
 
     def _build_global_pairs_and_maps(self):
@@ -206,9 +196,6 @@ class Ensemble(nn.Module):
             if force_name == "RepulsionCGForce":
                 continue
 
-            # local_idxs = [s.params_by_force[force_name]['idx'] for s in self.systems]
-            # local_maps = [s.params_by_force[force_name].get('map') for s in self.systems]
-
             local_maps = {s: s.params_by_force[force_name]['map'] for s in self.systems}
             local_idxs = [
                 s.params_by_force[force_name]['idx'][local_maps[s][:, 0]]
@@ -236,19 +223,10 @@ class Ensemble(nn.Module):
                                                     local_param_idxs, nterms_per_system, device=device
                                                 )
 
-                # combine per-system param maps into single tensor
-                # term_to_param_idx = torch.cat([m[:, 1:2] for m in local_maps], dim=0).squeeze(1)
-
-                # expand dihedral maps to per-term maps
-                # term_to_pair = dihedral_pair_maps[term_to_param_idx]           # (n_terms,3)
-                # term_global_atom_idx = global_atom_idx[term_to_param_idx]      # (n_terms,4)
-                # term_to_system_expanded = term_to_system[term_to_param_idx]     # (n_terms,)
-
                 self.term_to_pair_by_force[force_name] = dihedral_pair_maps
                 self.global_atom_idx_by_force[force_name] = global_atom_idx
                 self.term_to_system_by_force[force_name] = term_to_system
                 self.term_to_param_idx_by_force[force_name] = term_to_param_idx
-                # print(term_to_param_idx.shape)
 
             else:
                 # 2-body forces: direct mapping
@@ -268,9 +246,6 @@ class Ensemble(nn.Module):
         repulsion_pairs_set = all_pairs_set - bond_pairs_set
         repulsion_pair_idx = torch.tensor(sorted(list(repulsion_pairs_set)), dtype=torch.long, device=device)
 
-        # self.term_to_pair_by_force["RepulsionCGForce"] = match_pair_indices(
-        #     self.global_pair_idx, repulsion_pair_idx, max_atom=self.total_atoms
-        # )
         self.term_to_pair_by_force["RepulsionCGForce"] = repulsion_pair_idx
         self.global_atom_idx_by_force["RepulsionCGForce"] = self.global_pair_idx[repulsion_pair_idx]
         self.term_to_system_by_force["RepulsionCGForce"] = self.pair_to_system[repulsion_pair_idx]
@@ -384,7 +359,7 @@ class Ensemble(nn.Module):
         assert positions.shape == self.positions.shape, \
             f"Expected shape {self.positions.shape}, got {positions.shape}"
         self.positions = positions.detach().to(self.device, self.dtype)
-        self.positions.requires_grad_(True)
+        self.positions.requires_grad_(False)
 
         self._update_pairs_geometry_()
         self.compute_forces()  # Initialize forces consistent with the new positions

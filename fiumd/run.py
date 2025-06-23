@@ -6,7 +6,7 @@ from fiumd.forcefields.forcefield import ForceField
 from fiumd.parameters import Parameters
 from fiumd.forces_orig import Forces
 from fiumd.integrator import Integrator
-from fiumd.wrapper import Wrapper
+from fiumd.wrapper_orig import Wrapper
 import numpy as np
 from tqdm import tqdm
 import argparse

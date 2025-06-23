@@ -6,9 +6,12 @@ import fiumd.utils
 import fiumd.parameters
 import numpy as np
 from typing import Type
+import moleculekit.molecule
+from typing import Optional
 
 class System(nn.Module):
     def __init__(self,
+                 molecule: Optional[moleculekit.molecule.Molecule],
                  force_terms: list[str],
                  # params: dict[str, dict[str, torch.Tensor]],
                  params: fiumd.parameters.Parameters,
@@ -19,12 +22,14 @@ class System(nn.Module):
         ----------
 
         box : torch.Tensor, shape (3,)
+        molecule: molecule in system (moleculekit.molecule.Molecule)
         force_terms : force term present. list of str with the names of fiumd.forces.Force subclasses
             For example: {'BondForce', RepulsionCGForce}
         params: fiumd.parameters.Parameters
         """
         super().__init__()
 
+        self.molecule = molecule
         self.box = nn.parameter.Buffer(box)               # (3,)
         self.force_terms = force_terms  # per-interaction type
         self.params = params

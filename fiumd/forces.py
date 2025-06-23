@@ -310,9 +310,8 @@ class TorchMDNetForce(Force):
 
     def forward(self, ensemble, inplace=True):
         # Ensure positions require grad
-        pos = ensemble.positions
-        pos.requires_grad_(True)
-
+        pos = ensemble.positions.detach().clone().requires_grad_()
+     
         # 1) Forward through model (normal grad tracking)
         energy, _ = self.model(
             self.embeddings,
@@ -471,6 +470,19 @@ class DihedralForce(Force):
     def methods_info(self):
         fiumd.utils.methods_info(self)
 
+# def requires_grad_positions(force_fn: Force):
+#     def wrapper(ensemble, *args, **kwargs):
+#         # 1. Turn on gradient tracking
+#         ensemble.positions.requires_grad_(True)
+        
+#         # 2. Call the force function
+#         result = force_fn(ensemble, *args, **kwargs)
+
+#         # 3. Detach to allow in-place MD integration
+#         ensemble.positions = ensemble.positions.detach()
+
+#         return result
+#     return wrapper
         
 def evaluate_torsion_into(
     pot: torch.Tensor,

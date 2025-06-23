@@ -16,6 +16,7 @@ def attrs_info(module):
     attrs = [
         attr for attr in dir(module)
         if not attr.startswith("_") and not callable(getattr(module, attr))
+        # if not callable(getattr(module, attr))
     ]
     attrs.sort()
     max_attr_len = max((len(attr) for attr in attrs), default=0)
