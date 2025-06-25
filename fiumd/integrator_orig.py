@@ -4,7 +4,6 @@ import torch
 TIMEFACTOR = 48.88821
 BOLTZMAN = 0.001987191
 
-
 def kinetic_energy(masses, vel):
     Ekin = torch.sum(0.5 * torch.sum(vel * vel, dim=2, keepdim=True) * masses, dim=1)
     return Ekin

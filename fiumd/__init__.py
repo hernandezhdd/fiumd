@@ -3,6 +3,7 @@ from fiumd import _version
 # Expose main modules as attributes of fiumd
 from . import systems
 from . import forces
+from . import batch_forces
 from . import ensembles
 from . import integrator
 from . import neighbours
