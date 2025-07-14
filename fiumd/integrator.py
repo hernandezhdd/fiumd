@@ -25,6 +25,9 @@ class Integrator(nn.Module):
         """
         raise NotImplementedError("Integrator subclasses must implement the step method.")
 
+TIMEFACTOR = 48.88821
+BOLTZMAN = 0.001987191
+PICOSEC2TIMEU = 1000.0 / TIMEFACTOR
 
 class VelocityVerletIntegrator(Integrator):
     """
