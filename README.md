@@ -10,8 +10,7 @@ mamba activate fiumd
 
 pip install torch==2.7.1+cu128 torchvision torchaudio torchmd==1.0.4 torchmd-net --extra-index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://us-central1-python.pkg.dev/pypi-packages-455608/cu128/simple
 ```
-
-Finally install fiumd in editable mode with:
+Here i use CUDA 12.8. Finally install fiumd in editable mode with:
 ```
 pip install -e /LOCAL/PATH/TO/fiumd
 ```
