@@ -2,14 +2,18 @@
 
 ## Install FiuMD
 
+First we have to clone this repo to the local machine. Then create a new environment:
 ```
 mamba create -n fiumd -c conda-forge -c acellera python=3.10 moleculekit parmed ipykernel biopython
 
 mamba activate fiumd
 
 pip install torch==2.7.1+cu128 torchvision torchaudio torchmd==1.0.4 torchmd-net --extra-index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://us-central1-python.pkg.dev/pypi-packages-455608/cu128/simple
+```
 
-pip install -e /PATH/TO/fiumd_repository
+Finally install in editable mode with:
+```
+pip install -e /LOCAL/PATH/TO/fiumd
 ```
 
 ## About
