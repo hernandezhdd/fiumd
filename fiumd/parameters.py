@@ -127,6 +127,7 @@ class Parameters(nn.Module):
             self.nonbonded_params = self._make_nonbonded(mol, ff, uqatomtypes)
         if "bonds" in terms and len(mol.bonds):
             self.bond_params = self._make_bonds(mol, ff)
+
         if "angles" in terms and len(mol.angles):
             self.angle_params = self._make_angles(mol, ff)
         if "dihedrals" in terms and len(mol.dihedrals):
@@ -161,20 +162,42 @@ class Parameters(nn.Module):
         return masses
 
     def _make_bonds(self, mol, ff):
+        '''
+        #Note Pao: funcion modificada 
+
+        '''
         uqbonds = np.unique([sorted(bb) for bb in mol.bonds], axis=0)
         bonds = {"idx": [], "map": [], "params": {}}
         bonds["idx"] = torch.tensor(uqbonds.astype(np.int64))
 
+        param_types = {}
+        all_param_values = []
+        map_indices = []
+
         k = 0
         for i, bb in enumerate(uqbonds):
             at_t = tuple(mol.atomtype[bb])
-            if at_t not in bonds["params"]:
-                bonds["params"][at_t] = [k, ff.get_bond(*at_t)]
-                k += 1
-            bonds["map"].append([i, bonds["params"][at_t][0]])
 
-        bonds["map"] = torch.tensor(bonds["map"])
-        bonds["params"] = torch.tensor([x[1] for x in bonds["params"].values()])
+            if at_t not in param_types:
+                param_types[at_t] = ff.get_bond(*at_t)
+            
+            all_param_values.append(param_types[at_t])
+            map_indices.append([i, i])
+        bonds = {
+        "idx": torch.tensor(uqbonds.astype(np.int64)),
+        "map": torch.tensor(map_indices, dtype=torch.int64),
+        "params": torch.tensor(np.array(all_param_values), dtype=torch.float32)
+        }
+
+        #     if at_t not in bonds["params"]:
+
+        #         bonds["params"][at_t] = [k, ff.get_bond(*at_t)]
+        #         k += 1
+        #     bonds["map"].append([i, bonds["params"][at_t][0]])
+
+        # bonds["map"] = torch.tensor(bonds["map"])
+        # bonds["params"] = torch.tensor([x[1] for x in bonds["params"].values()])
+        
         return bonds
 
     def _make_angles(self, mol, ff):
@@ -311,6 +334,7 @@ class Parameters(nn.Module):
             params["lj"] = self.nonbonded_params["params"]
         if "bonds" in terms:
             params["bonds"] = self.bond_params["params"]
+
         if "angles" in terms:
             params["angles"] = self.angle_params["params"]
         if "dihedrals" in terms:

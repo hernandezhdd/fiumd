@@ -265,6 +265,9 @@ class Ensemble(nn.Module):
                 else:
                     key_list = [s.params_by_force[force_name][key] for s in self.systems]
                     kwarg_params[key] = torch.cat(key_list, dim=0).to(self.device)
+                    print ('key list')
+                    print (key, kwarg_params[key].shape)
+                
 
             force_module = force_cls(
                 term_to_pair=self.term_to_pair_by_force[force_name],
@@ -341,11 +344,10 @@ class Ensemble(nn.Module):
         """
         self.zero_energy_()
         self.zero_forces_()
-
+  
         if inplace:
             for f in self.force_modules:
                 f(self, inplace=True)
-
             return None
         else:
             results = {}
