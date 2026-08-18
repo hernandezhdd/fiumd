@@ -164,19 +164,8 @@ class Parameters(nn.Module):
     def _make_bonds(self, mol, ff):
 
         '''
-        
         #NOTE: Funcion modificada: 
-        Se cambiaron estas lineas por las que estan ahora, ya que cuando habia enlaces repetidos no se encontraba correctamente la informacion, y habia diferencia en los tamaños de los tensores.
-
-        #     if at_t not in bonds["params"]:
-
-        #         bonds["params"][at_t] = [k, ff.get_bond(*at_t)]
-        #         k += 1
-        #     bonds["map"].append([i, bonds["params"][at_t][0]])
-
-        # bonds["map"] = torch.tensor(bonds["map"])
-        # bonds["params"] = torch.tensor([x[1] for x in bonds["params"].values()])
-
+        
         '''
         uqbonds = np.unique([sorted(bb) for bb in mol.bonds], axis=0)
         bonds = {"idx": [], "map": [], "params": {}}
