@@ -92,9 +92,7 @@ class BondForce(Force):
         kwarg_params : dict[str, torch.Tensor]
         """
         kwarg_params = system.params.bond_params
-    
-        print ("-------KWARGS")
-        print (kwarg_params)
+
         return kwarg_params
 
     def forward(self, ensemble, inplace=True):
