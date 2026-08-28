@@ -92,7 +92,7 @@ class BondForce(Force):
         kwarg_params : dict[str, torch.Tensor]
         """
         kwarg_params = system.params.bond_params
-    
+
         return kwarg_params
 
     def forward(self, ensemble, inplace=True):
@@ -310,8 +310,13 @@ class TorchMDNetForce(Force):
 
     def forward(self, ensemble, inplace=True):
         # Ensure positions require grad
-        pos = ensemble.positions.detach().clone().requires_grad_()
+        # pos = ensemble.positions.detach().clone().requires_grad_()
+        pos = ensemble.positions.detach().clone().requires_grad_(True)
      
+        self.box = self.box.detach().clone() if self.box is not None else None
+        self.batch = self.batch.detach().clone() if self.batch is not None else None
+        self.embeddings = self.embeddings.detach().clone()
+
         # 1) Forward through model (normal grad tracking)
         energy, _ = self.model(
             self.embeddings,

@@ -173,3 +173,4 @@ def xyz_writer(input_file, output_file, mol_elements):
                 f.write(f"{mol_elements[j]} ")
                 f.write(" ".join(map(str, npy_traj[j, :, i])))
                 f.write("\n")
+
