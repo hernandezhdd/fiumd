@@ -32,49 +32,92 @@ class VelocityVerletIntegrator(Integrator):
 
     Parameters
     ----------
-    dt : float
-        Integration timestep (in fs)
-
-    Assumes the ensemble exposes:
-      - .positions : Tensor of shape (n_atoms, 3)
-      - .velocities : Tensor of shape (n_atoms, 3)
-      - .forces : Tensor of shape (n_atoms, 3)
-      - .masses : Tensor of shape (n_atoms,)
-      - .update_pairs_geometry_() : method to update pair geometry (e.g. distances, directions)
-      - .compute_forces() : method to recompute forces
+    dt : float or Tensor
+        Integration timestep in fs. If a Tensor is provided, it must
+        have shape (nsystems,), assigning one timestep to each system.
     """
 
-    def __init__(self, dt: float, ensemble: fiumd.ensembles.Ensemble):
+    def __init__(self, dt, ensemble: fiumd.ensembles.Ensemble):
         super().__init__()
 
         self.ensemble = ensemble
         self._device = ensemble.device
         self._dtype = ensemble.dtype
-        self.dt = nn.parameter.Buffer( torch.tensor(dt / TIMEFACTOR) )
-        self.dv = nn.parameter.Buffer( torch.empty_like(ensemble.velocities),
-                                        persistent=False)
-        self.dx = nn.parameter.Buffer( torch.empty_like(ensemble.velocities),
-                                        persistent=False)
-        
-        # self.half_dt = 0.5 * dt
+
+        self.set_dt(dt)
+
+        self.dv = nn.parameter.Buffer(
+            torch.empty_like(ensemble.velocities),
+            persistent=False,
+        )
+        self.dx = nn.parameter.Buffer(
+            torch.empty_like(ensemble.velocities),
+            persistent=False,
+        )
+
+    def _system_parameter(self, value, name):
+        if isinstance(value, (float, int)):
+            return torch.full(
+                (self.ensemble.nsystems,),
+                value,
+                device=self._device,
+                dtype=self._dtype,
+            )
+
+        elif isinstance(value, torch.Tensor):
+            if value.shape != (self.ensemble.nsystems,):
+                raise ValueError(
+                    f"{name} must be a scalar or have shape "
+                    f"({self.ensemble.nsystems},), got {value.shape}"
+                )
+
+            return value.to(
+                device=self._device,
+                dtype=self._dtype,
+            )
+
+        else:
+            raise TypeError(
+                f"{name} must be a float, int, or Tensor, "
+                f"got {type(value)}"
+            )
+
+    def _expand_to_atoms(self, values):
+        return torch.cat([
+            values[i].expand(natoms, 1)
+            for i, natoms in enumerate(
+                self.ensemble.natoms_per_system
+            )
+        ], dim=0)
+
+    def set_dt(self, dt):
+        dt = self._system_parameter(dt, "dt")
+
+        if torch.any(dt <= 0):
+            raise ValueError("dt must be positive.")
+
+        self._dt = dt / TIMEFACTOR
+        self._dt_per_atom = self._expand_to_atoms(self._dt)
 
     def forward(self):
         """
-        Advances the ensemble by one integration step using Velocity Verlet.
+        Advances the ensemble by one integration step using
+        Velocity Verlet.
         """
+
         # v(t + dt/2) = v(t) + (F(t)/m) * dt/2
-        self.dv.copy_( self.ensemble.forces )
-        self.dv.mul_( 0.5 * self.dt )
-        self.dv.mul_( self.ensemble.inv_masses )
-        
+        self.dv.copy_(self.ensemble.forces)
+        self.dv.mul_(0.5 * self._dt_per_atom)
+        self.dv.mul_(self.ensemble.inv_masses)
+
         self.ensemble.velocities.add_(self.dv)
 
         # x(t + dt) = x(t) + v(t + dt/2) * dt
         self.dx.copy_(self.ensemble.velocities)
-        self.dx.mul_(self.dt)
+        self.dx.mul_(self._dt_per_atom)
         self.ensemble.positions.add_(self.dx)
 
-        # Update geometry (e.g. bond vectors, unit directions, etc.)
+        # Update geometry
         self.ensemble._update_pairs_geometry_()
 
         # F(t + dt)
@@ -82,9 +125,9 @@ class VelocityVerletIntegrator(Integrator):
 
         # v(t + dt) = v(t + dt/2) + (F(t + dt)/m) * dt/2
         self.dv.copy_(self.ensemble.forces)
-        self.dv.mul_(self.dt)
-        self.dv.mul_( 0.5 * self.ensemble.inv_masses )
-        self.ensemble.velocities.add_( self.dv )
+        self.dv.mul_(0.5 * self._dt_per_atom)
+        self.dv.mul_(self.ensemble.inv_masses)
+        self.ensemble.velocities.add_(self.dv)
 
     def attrs_info(self):
         fiumd.utils.attrs_info(self)
