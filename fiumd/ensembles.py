@@ -138,6 +138,12 @@ class Ensemble(nn.Module):
         self._build_global_pairs_and_maps()
 
         self._box_expanded = self.box[self.pair_to_system]  # shape: (n_pairs, 3)
+
+        self._box_vectors = (
+            self.box.unsqueeze(-1)
+            * torch.eye(3, device=self.device, dtype=self.dtype)
+        )
+        
         self.n_pairs = self.global_pair_idx.shape[0]
 
         self.pairs_distances = torch.empty((self.n_pairs,), device=self.device, dtype=self.dtype)
@@ -285,7 +291,8 @@ class Ensemble(nn.Module):
                 embeddings=self.nnp_embeddings,
                 batch=self.atom_to_system,
                 device=self.device,
-                box=self.box[0].unsqueeze(1).expand(3, 3) * torch.eye(3, device=self.device)
+                # box=self.box[0].unsqueeze(1).expand(3, 3) * torch.eye(3, device=self.device)
+                box=self._box_vectors,
             )
             force_modules_list.append(force_module)
 
