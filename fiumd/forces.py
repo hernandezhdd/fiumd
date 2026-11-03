@@ -179,11 +179,6 @@ class RepulsionCGForce(Force):
                  atom_types: torch.Tensor,
                  kwarg_params: dict[str, torch.Tensor],
                  scale=1.0):
-        super().__init__("RepulsionCG")
-        self.term_to_pair = nn.parameter.Buffer(term_to_pair, persistent=True)
-        self.global_atom_idx = nn.parameter.Buffer(global_atom_idx, persistent=True)
-        self.term_to_system = nn.parameter.Buffer(term_to_system, persistent=True)
-        self.term_to_param_idx = nn.parameter.Buffer(term_to_param_idx, persistent=True) if term_to_param_idx is not None else None
         """
         Repulsion force using a coarse-grained repulsion model.
 
@@ -192,7 +187,7 @@ class RepulsionCGForce(Force):
         - global_atom_idx (Tensor): Atom index pairs (N, 2).
         - term_to_system (Tensor): Maps global pair to system index.
         - atom_types (Tensor): Atom type for each atom (int tensor of shape (n_atoms,)).
-        - B (Tensor): (ntypes x ntypes) repulsion coefficient matrix.
+        - kwarg_params (dict): Contains precomputed per-pair 'coef' tensor of shape (npairs,).
         - scale (float): Scaling factor for energy/force.
         """
         super().__init__("RepulsionCG")
@@ -204,20 +199,27 @@ class RepulsionCGForce(Force):
         self.term_to_param_idx = nn.parameter.Buffer(term_to_param_idx, persistent=True) if term_to_param_idx is not None else None
         self.atom_types = nn.parameter.Buffer(atom_types, persistent=True)
         self.scale = scale
-        # self.A = nn.parameter.Buffer(kwarg_params["A"], persistent=True)
-        self.B = nn.parameter.Buffer(kwarg_params["B"], persistent=True)
 
-        # Derived indices
-        self.type_i = nn.parameter.Buffer(self.atom_types[self.global_atom_idx[:, 0]], persistent=True)
-        self.type_j = nn.parameter.Buffer(self.atom_types[self.global_atom_idx[:, 1]], persistent=True)
-        self.coef = nn.parameter.Buffer(self.B[self.type_i, self.type_j], persistent=True)   # (npairs,)
+        if "coef" not in kwarg_params:
+            raise ValueError(
+                "RepulsionCGForce requires a per-pair 'coef' tensor in kwarg_params "
+                "(see fiumd.ensembles.build_repulsion_coefs)."
+            )
+        if kwarg_params["coef"].shape != (self.term_to_pair.shape[0],):
+            raise ValueError(
+                f"'coef' must have shape ({self.term_to_pair.shape[0]},), "
+                f"got {tuple(kwarg_params['coef'].shape)}"
+            )
+        self.coef = nn.parameter.Buffer(kwarg_params["coef"], persistent=True)  # (npairs,)
 
-        # Temporary buffers (non-persistent)
+        # Temporary buffers (non-persistent) matching coef's device and dtype
         npairs = self.term_to_pair.shape[0]
-        self.pot = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
-        self.forces = nn.parameter.Buffer(torch.empty((npairs, 3)), persistent=False)
-        self.rinv1 = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
-        self.rinv6 = nn.parameter.Buffer(torch.empty(npairs), persistent=False)
+        buf_device = self.coef.device
+        buf_dtype = self.coef.dtype
+        self.pot = nn.parameter.Buffer(torch.empty(npairs, device=buf_device, dtype=buf_dtype), persistent=False)
+        self.forces = nn.parameter.Buffer(torch.empty((npairs, 3), device=buf_device, dtype=buf_dtype), persistent=False)
+        self.rinv1 = nn.parameter.Buffer(torch.empty(npairs, device=buf_device, dtype=buf_dtype), persistent=False)
+        self.rinv6 = nn.parameter.Buffer(torch.empty(npairs, device=buf_device, dtype=buf_dtype), persistent=False)
 
     @classmethod
     def build_params(cls,
@@ -232,9 +234,11 @@ class RepulsionCGForce(Force):
         -------
         nonbonded_params : dict[str, torch.Tensor]
         """
-        kwarg_params = {}
-        
-        kwarg_params = system.params.nonbonded_params
+        kwarg_params = (
+            dict(system.params.nonbonded_params)
+            if system.params.nonbonded_params is not None
+            else {}
+        )
 
         _, kwarg_params['B'] = system.params.get_AB()
     

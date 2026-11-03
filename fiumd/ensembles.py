@@ -266,11 +266,17 @@ class Ensemble(nn.Module):
             kwarg_params = {}
             for key in self._param_names_by_force[force_name]:
                 if key == "B":
-                    B = merge_B_matrices(self.systems, self.atom_type_map, device=self.device)
-                    kwarg_params["B"] = B.to(self.device)
+                    kwarg_params["coef"] = build_repulsion_coefs(
+                        systems=self.systems,
+                        global_atom_idx=self.global_atom_idx_by_force[force_name],
+                        term_to_system=self.term_to_system_by_force[force_name],
+                        atom_offsets=self.atom_offsets,
+                        device=self.device,
+                        dtype=self.dtype,
+                    )
                 else:
                     key_list = [s.params_by_force[force_name][key] for s in self.systems]
-                    kwarg_params[key] = torch.cat(key_list, dim=0).to(self.device)                
+                    kwarg_params[key] = torch.cat(key_list, dim=0).to(device=self.device)                
 
             force_module = force_cls(
                 term_to_pair=self.term_to_pair_by_force[force_name],
@@ -607,32 +613,81 @@ def local_to_global_idxs(local_pair_lists, natoms_per_system, device="cpu"):
     return torch.cat(global_pair_idx, dim=0), torch.cat(pair_to_system, dim=0)
 
 
-def merge_B_matrices(systems, global_type_map, device):
+def build_repulsion_coefs(
+    systems: list,
+    global_atom_idx: torch.Tensor,
+    term_to_system: torch.Tensor,
+    atom_offsets: torch.Tensor,
+    device="cpu",
+    dtype=torch.float32,
+) -> torch.Tensor:
     """
-    systems: list of system objects
-    global_type_map: dict from atomtype string to global index
+    Build per-pair repulsion coefficients directly from each system's local B matrix
+    and local atom-type indices, preserving per-system parameter isolation and dtype.
+
+    Parameters
+    ----------
+    systems : list of System
+        The list of molecular systems in the ensemble.
+    global_atom_idx : torch.Tensor
+        Shape (n_repulsion_pairs, 2), global atom indices for each repulsion pair.
+    term_to_system : torch.Tensor
+        Shape (n_repulsion_pairs,), system index for each repulsion pair.
+    atom_offsets : torch.Tensor
+        Shape (nsystems,), cumulative atom index offset per system.
+    device : str or torch.device
+        Target device for the output coefficient tensor.
+    dtype : torch.dtype
+        Target floating-point dtype for the output coefficient tensor.
+
+    Returns
+    -------
+    coef : torch.Tensor
+        Shape (n_repulsion_pairs,), repulsion coefficient B_ij for each nonbonded pair.
     """
-    ntypes = len(global_type_map)
-    B_global = torch.zeros((ntypes, ntypes), dtype=torch.float32, device=device)
-    count = torch.zeros((ntypes, ntypes), dtype=torch.float32, device=device)  # to allow averaging
+    # NaN-initialised so that any pair not assigned below is immediately visible
+    coef = torch.full((global_atom_idx.shape[0],), float("nan"), device=device, dtype=dtype)
 
-    for system in systems:
-        local_types = system.params.atomtypes.tolist()
-        local_type_to_idx = {t: i for i, t in enumerate(sorted(set(local_types)))}
-        B_local = system.params_by_force["RepulsionCGForce"]["B"]  # shape (n_local_types, n_local_types)
+    for sys_idx, system in enumerate(systems):
+        sys_mask = term_to_system == sys_idx
+        if not torch.any(sys_mask):
+            continue
 
-        for t1 in local_types:
-            for t2 in local_types:
-                i_local = local_type_to_idx[t1]
-                j_local = local_type_to_idx[t2]
-                i_global = global_type_map[t1]
-                j_global = global_type_map[t2]
+        local_pairs = global_atom_idx[sys_mask] - atom_offsets[sys_idx]
 
-                B_global[i_global, j_global] += B_local[i_local, j_local]
-                count[i_global, j_global] += 1
+        # Per-atom index into this system's B matrix. Must use the same type
+        # ordering as system.params.get_AB().
+        mapped = getattr(system.params, "mapped_atom_types", None)
+        if mapped is not None:
+            mapped_types = torch.as_tensor(mapped, device=device, dtype=torch.long)
+        else:
+            local_types = list(system.params.atomtypes)
+            local_type_to_idx = {t: i for i, t in enumerate(sorted(set(local_types)))}
+            mapped_types = torch.tensor(
+                [local_type_to_idx[t] for t in local_types], device=device, dtype=torch.long
+            )
 
-    # Average where multiple systems contributed
-    mask = count > 0
-    B_global[mask] /= count[mask]
+        B_local = torch.as_tensor(
+            system.params_by_force["RepulsionCGForce"]["B"], device=device, dtype=dtype
+        )
 
-    return B_global
+        if mapped_types.shape[0] != system.natoms:
+            raise ValueError(
+                f"System {sys_idx}: got {mapped_types.shape[0]} atom-type indices "
+                f"for {system.natoms} atoms."
+            )
+        if B_local.ndim != 2 or B_local.shape[0] != B_local.shape[1] \
+                or B_local.shape[0] <= int(mapped_types.max()):
+            raise ValueError(
+                f"System {sys_idx}: B matrix of shape {tuple(B_local.shape)} is inconsistent "
+                f"with atom-type indices (max index {int(mapped_types.max())})."
+            )
+
+        type_i = mapped_types[local_pairs[:, 0]]
+        type_j = mapped_types[local_pairs[:, 1]]
+        coef[sys_mask] = B_local[type_i, type_j]
+
+    if torch.isnan(coef).any():
+        raise RuntimeError("build_repulsion_coefs: some repulsion pairs were not assigned a coefficient.")
+
+    return coef
