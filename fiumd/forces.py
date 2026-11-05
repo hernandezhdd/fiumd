@@ -73,10 +73,13 @@ class BondForce(Force):
         # self.inplace = inplace
         # self.explicit_forces = explicit_forces
         
-        # Derived indices
-        self.pot = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0]), persistent=False)
-        self.x = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0]), persistent=False)
-        self.forces = nn.parameter.Buffer( torch.empty(term_to_pair.shape[0],3), persistent=False)
+        # Temporary buffers (non-persistent) matching parameter device and dtype
+        nterms = self.term_to_pair.shape[0]
+        buf_device = self.k.device
+        buf_dtype = self.k.dtype
+        self.pot = nn.parameter.Buffer(torch.empty(nterms, device=buf_device, dtype=buf_dtype), persistent=False)
+        self.x = nn.parameter.Buffer(torch.empty(nterms, device=buf_device, dtype=buf_dtype), persistent=False)
+        self.forces = nn.parameter.Buffer(torch.empty((nterms, 3), device=buf_device, dtype=buf_dtype), persistent=False)
 
     @classmethod
     def build_params(cls,
@@ -298,24 +301,23 @@ class TorchMDNetForce(Force):
         box=None,
     ):
         super().__init__("TorchMDNet")
-        # Put model in eval mode and move to device
-        self.model = model.eval().to(device)
         self.dtype = dtype
+        # Put model in eval mode and move to device and dtype
+        self.model = model.eval().to(device=device, dtype=self.dtype)
         # Freeze model parameters so only positions require grad
         for p in self.model.parameters():
             p.requires_grad_(False)
 
         # Register buffers
         self.box = nn.parameter.Buffer(
-            box.to(self.dtype)
+            box.to(device=device, dtype=self.dtype)
         ) if box is not None else None
-        self.embeddings = nn.parameter.Buffer(embeddings)
-        self.batch = nn.parameter.Buffer(batch)
+        self.embeddings = nn.parameter.Buffer(embeddings.to(device=device))
+        self.batch = nn.parameter.Buffer(batch.to(device=device))
 
     def forward(self, ensemble, inplace=True):
-        # Ensure positions require grad
-        # pos = ensemble.positions.detach().clone().requires_grad_()
-        pos = ensemble.positions.detach().clone().requires_grad_(True)
+        # Ensure positions require grad and match model dtype
+        pos = ensemble.positions.detach().to(dtype=self.dtype).clone().requires_grad_(True)
      
         self.box = self.box.detach().clone() if self.box is not None else None
         self.batch = self.batch.detach().clone() if self.batch is not None else None
@@ -340,11 +342,14 @@ class TorchMDNetForce(Force):
 
         # 3) Accumulate into the ensemble
         if inplace:
-            ensemble.energy.add_(energy.detach().squeeze())
-            ensemble.forces.add_(forces)
+            ensemble.energy.add_(energy.detach().squeeze().to(dtype=ensemble.energy.dtype))
+            ensemble.forces.add_(forces.to(dtype=ensemble.forces.dtype))
             return None
         else:
-            return energy, forces
+            return (
+                energy.to(dtype=ensemble.energy.dtype),
+                forces.to(dtype=ensemble.forces.dtype),
+            )
 
 
 # class TorchMDNetForce(Force):
@@ -433,9 +438,12 @@ class DihedralForce(Force):
         self.phi0 = nn.parameter.Buffer(kwarg_params['params'][:, 1], persistent=True)
         self.periodicity = nn.parameter.Buffer(kwarg_params['params'][:, 2], persistent=True)
 
+        # Temporary buffers (non-persistent) matching parameter device and dtype
         nterms = self.term_to_pair.shape[0]
-        self.pot = nn.parameter.Buffer(torch.empty(nterms), persistent=False)
-        self.forces = nn.parameter.Buffer(torch.empty(nterms, 4, 3), persistent=False)
+        buf_device = self.k.device
+        buf_dtype = self.k.dtype
+        self.pot = nn.parameter.Buffer(torch.empty(nterms, device=buf_device, dtype=buf_dtype), persistent=False)
+        self.forces = nn.parameter.Buffer(torch.empty((nterms, 4, 3), device=buf_device, dtype=buf_dtype), persistent=False)
 
 
     @classmethod

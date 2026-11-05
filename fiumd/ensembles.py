@@ -276,7 +276,11 @@ class Ensemble(nn.Module):
                     )
                 else:
                     key_list = [s.params_by_force[force_name][key] for s in self.systems]
-                    kwarg_params[key] = torch.cat(key_list, dim=0).to(device=self.device)                
+                    cat_tensor = torch.cat(key_list, dim=0)
+                    if cat_tensor.is_floating_point():
+                        kwarg_params[key] = cat_tensor.to(device=self.device, dtype=self.dtype)
+                    else:
+                        kwarg_params[key] = cat_tensor.to(device=self.device)
 
             force_module = force_cls(
                 term_to_pair=self.term_to_pair_by_force[force_name],
@@ -296,6 +300,7 @@ class Ensemble(nn.Module):
                 model=self.nnp_model,
                 embeddings=self.nnp_embeddings,
                 batch=self.atom_to_system,
+                dtype=self.dtype,
                 device=self.device,
                 # box=self.box[0].unsqueeze(1).expand(3, 3) * torch.eye(3, device=self.device)
                 box=self._box_vectors,
