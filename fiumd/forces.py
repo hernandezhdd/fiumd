@@ -508,7 +508,7 @@ def evaluate_torsion_into(
     all_relative_positions: torch.Tensor,
     all_distances: torch.Tensor,
     dihedral_idx_map: torch.Tensor,     # shape (n_terms, 3)
-    torsion_param_map: torch.Tensor,    # shape (n_terms, 1)
+    torsion_param_map: torch.Tensor,    # shape (n_terms,)
     k: torch.Tensor,
     phi0: torch.Tensor,
     periodicity: torch.Tensor,
@@ -517,11 +517,10 @@ def evaluate_torsion_into(
     Computes torsion energy and forces for a set of dihedral terms.
     """
     eps = 1e-8
-    dih_idx = torsion_param_map#[:, 0]
 
-    r12 = all_relative_positions[dihedral_idx_map[dih_idx, 0]]  # shape (n_terms, 3)
-    r23 = all_relative_positions[dihedral_idx_map[dih_idx, 1]]
-    r34 = all_relative_positions[dihedral_idx_map[dih_idx, 2]]
+    r12 = all_relative_positions[dihedral_idx_map[:, 0]]  # shape (n_terms, 3)
+    r23 = all_relative_positions[dihedral_idx_map[:, 1]]
+    r34 = all_relative_positions[dihedral_idx_map[:, 2]]
 
     crossA = torch.cross(r12, r23, dim=1)
     crossB = torch.cross(r23, r34, dim=1)
@@ -537,7 +536,7 @@ def evaluate_torsion_into(
     sin_phi = (crossC * crossB_normed).sum(dim=1) / normC
     phi = -torch.atan2(sin_phi, cos_phi)
 
-    is_amber = (periodicity > 0).all()
+    is_amber = periodicity > 0
     angle_diff = torch.where(
         is_amber,
         periodicity * phi - phi0,
@@ -558,7 +557,7 @@ def evaluate_torsion_into(
         2 * k * angle_diff
     )
 
-    norm_r23 = all_distances[dihedral_idx_map[dih_idx, 1]]
+    norm_r23 = all_distances[dihedral_idx_map[:, 1]]
     norm_r23_sq = norm_r23.pow(2).clamp(min=eps)
 
     dot12 = (r12 * r23).sum(dim=1)

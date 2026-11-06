@@ -222,12 +222,15 @@ class Ensemble(nn.Module):
                     for i in range(3)
                 ], dim=1)  # shape (n_dihedrals, 3)
 
-                nterms_per_system = torch.tensor([local_idx.shape[0] for local_idx in local_idxs],
-                                                  device=self.device)
+                nparams_per_system = torch.tensor(
+                    [s.params_by_force[force_name]['params'].shape[0] for s in self.systems],
+                    device=self.device,
+                    dtype=torch.long,
+                )
 
                 term_to_param_idx, param_to_system = local_to_global_idxs(
-                                                    local_param_idxs, nterms_per_system, device=device
-                                                )
+                    local_param_idxs, nparams_per_system, device=device
+                )
 
                 self.term_to_pair_by_force[force_name] = dihedral_pair_maps
                 self.global_atom_idx_by_force[force_name] = global_atom_idx
@@ -274,6 +277,15 @@ class Ensemble(nn.Module):
                         device=self.device,
                         dtype=self.dtype,
                     )
+                elif key == "params" and force_name in ("BondForce", "DihedralForce"):
+                    key_list = [
+                        s.params_by_force[force_name]["params"][
+                            s.params_by_force[force_name]["map"][:, 1]
+                        ]
+                        for s in self.systems
+                    ]
+                    cat_tensor = torch.cat(key_list, dim=0)
+                    kwarg_params[key] = cat_tensor.to(device=self.device, dtype=self.dtype)
                 else:
                     key_list = [s.params_by_force[force_name][key] for s in self.systems]
                     cat_tensor = torch.cat(key_list, dim=0)
