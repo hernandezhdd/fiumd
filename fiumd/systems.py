@@ -16,6 +16,7 @@ class System(nn.Module):
                  # params: dict[str, dict[str, torch.Tensor]],
                  params: fiumd.parameters.Parameters,
                  box,
+                 cutoff: Optional[float] = None,
                 ):
         """
         Parameters
@@ -26,13 +27,28 @@ class System(nn.Module):
         force_terms : force term present. list of str with the names of fiumd.forces.Force subclasses
             For example: {'BondForce', RepulsionCGForce}
         params: fiumd.parameters.Parameters
+        cutoff : float or None, optional
+            Cutoff distance (in Å) for nonbonded interactions in this system (default: None).
         """
         super().__init__()
+
+        if cutoff is not None:
+            if isinstance(cutoff, torch.Tensor):
+                if cutoff.ndim != 0:
+                    raise ValueError(f"System cutoff must be a scalar, got tensor of shape {tuple(cutoff.shape)}")
+                cutoff = float(cutoff.item())
+            elif isinstance(cutoff, (float, int)):
+                cutoff = float(cutoff)
+            else:
+                raise TypeError(f"cutoff must be a float, int, scalar Tensor, or None, got {type(cutoff)}")
+            if cutoff <= 0:
+                raise ValueError(f"cutoff must be positive, got {cutoff}")
 
         self.molecule = molecule
         self.box = nn.parameter.Buffer(box)               # (3,)
         self.force_terms = force_terms  # per-interaction type
         self.params = params
+        self.cutoff = cutoff
         self.natoms = len(params.masses)
         self.params_by_force = self._build_force_params()
 
@@ -61,4 +77,3 @@ class System(nn.Module):
 
     def methods_info(self):
         fiumd.utils.methods_info(self)
-        

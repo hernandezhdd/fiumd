@@ -190,7 +190,8 @@ class RepulsionCGForce(Force):
         - global_atom_idx (Tensor): Atom index pairs (N, 2).
         - term_to_system (Tensor): Maps global pair to system index.
         - atom_types (Tensor): Atom type for each atom (int tensor of shape (n_atoms,)).
-        - kwarg_params (dict): Contains precomputed per-pair 'coef' tensor of shape (npairs,).
+        - kwarg_params (dict): Contains precomputed per-pair 'coef' tensor of shape (npairs,),
+                               and optionally a per-pair 'cutoff' tensor of shape (npairs,).
         - scale (float): Scaling factor for energy/force.
         """
         super().__init__("RepulsionCG")
@@ -224,6 +225,35 @@ class RepulsionCGForce(Force):
         self.rinv1 = nn.parameter.Buffer(torch.empty(npairs, device=buf_device, dtype=buf_dtype), persistent=False)
         self.rinv6 = nn.parameter.Buffer(torch.empty(npairs, device=buf_device, dtype=buf_dtype), persistent=False)
 
+        cutoff = kwarg_params.get("cutoff")
+        if cutoff is not None:
+            if isinstance(cutoff, (float, int)):
+                if cutoff <= 0:
+                    raise ValueError(f"cutoff must be positive, got {cutoff}")
+                self.cutoff = float(cutoff)
+            elif isinstance(cutoff, torch.Tensor):
+                if torch.any(cutoff <= 0):
+                    raise ValueError("cutoff values must be positive.")
+                if cutoff.ndim == 0:
+                    self.cutoff = float(cutoff.item())
+                elif cutoff.shape == (npairs,):
+                    self.cutoff = nn.parameter.Buffer(
+                        cutoff.to(device=buf_device, dtype=buf_dtype), persistent=True
+                    )
+                else:
+                    raise ValueError(
+                        f"cutoff tensor must be scalar or have shape ({npairs},), "
+                        f"got {tuple(cutoff.shape)}"
+                    )
+            else:
+                raise TypeError(f"cutoff must be float, int, Tensor, or None, got {type(cutoff)}")
+            self.cutoff_mask = nn.parameter.Buffer(
+                torch.empty(npairs, device=buf_device, dtype=torch.bool), persistent=False
+            )
+        else:
+            self.cutoff = None
+            self.cutoff_mask = None
+
     @classmethod
     def build_params(cls,
                      system: fiumd.systems.System,
@@ -244,6 +274,7 @@ class RepulsionCGForce(Force):
         )
 
         _, kwarg_params['B'] = system.params.get_AB()
+        kwarg_params['cutoff'] = getattr(system, 'cutoff', None)
     
         return kwarg_params
     
@@ -261,7 +292,11 @@ class RepulsionCGForce(Force):
         """
         with torch.inference_mode():
             self.rinv1.copy_(ensemble.pairs_distances[self.term_to_pair])  # (npairs,)
+            if self.cutoff is not None:
+                torch.gt(self.rinv1, self.cutoff, out=self.cutoff_mask)    # True where dist > cutoff
             self.rinv1.reciprocal_()                                       # 1/r
+            if self.cutoff is not None:
+                self.rinv1.masked_fill_(self.cutoff_mask, 0.0)             # 0 where dist > cutoff
             self.rinv6.copy_(self.rinv1).pow_(6)                           # 1/r^6
     
             self.pot.copy_(self.coef).mul_(self.rinv6).div_(self.scale)   # V_CG = B * (1/r)^6 / scale

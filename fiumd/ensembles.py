@@ -9,7 +9,7 @@ from typing import Type
 import inspect
 
 # from fiumd.neighbours import NeighbourListBuilder
-import fiumd.neighbours
+# import fiumd.neighbours
 
 from torchmdnet.models.model import load_model
 
@@ -103,13 +103,14 @@ class Ensemble(nn.Module):
     >>> ensemble.info()
     """
     def __init__(self, systems: list, device="cpu",
-                 dtype=torch.float32, cutoff=5.0,
-                nnp_model=None, nnp_embeddings=None):
+                 dtype=torch.float32,
+                 nnp_model=None, nnp_embeddings=None):
         super().__init__()
         self.device = torch.device(device)
         self.dtype = dtype
         self.systems = systems
         self.nsystems = len(systems)
+        self.cutoffs = [getattr(s, "cutoff", None) for s in systems]
         self.nnp_model = nnp_model
         self.nnp_embeddings = nnp_embeddings
         
@@ -153,7 +154,7 @@ class Ensemble(nn.Module):
         self._pbc_offset = torch.empty((self.n_pairs, 3), device=self.device, dtype=self.dtype)
         
 
-        self.nl_builder = fiumd.neighbours.NeighbourListBuilder(n_pairs=self.n_pairs, cutoff=cutoff, device=self.device, dtype=self.dtype)
+        # self.nl_builder = fiumd.neighbours.NeighbourListBuilder(n_pairs=self.n_pairs, cutoff=cutoff, device=self.device, dtype=self.dtype)
 
         self.force_modules = nn.ModuleList(self._build_force_terms())
     
@@ -277,6 +278,20 @@ class Ensemble(nn.Module):
                         device=self.device,
                         dtype=self.dtype,
                     )
+                elif key == "cutoff":
+                    sys_cutoffs = [
+                        s.params_by_force[force_name].get("cutoff", getattr(s, "cutoff", None))
+                        for s in self.systems
+                    ]
+                    if any(c is not None for c in sys_cutoffs):
+                        cutoff_per_sys = torch.tensor(
+                            [float(c) if c is not None else float("inf") for c in sys_cutoffs],
+                            device=self.device,
+                            dtype=self.dtype,
+                        )
+                        kwarg_params["cutoff"] = cutoff_per_sys[self.term_to_system_by_force[force_name]]
+                    else:
+                        kwarg_params["cutoff"] = None
                 elif key == "params" and force_name in ("BondForce", "DihedralForce"):
                     key_list = [
                         s.params_by_force[force_name]["params"][
