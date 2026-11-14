@@ -144,7 +144,7 @@ class LangevinThermostat(nn.Module):
         Parameters
         ----------
         gamma : float or Tensor
-            Friction coefficient (1/fs). Scalar or (nsystems,) tensor.
+            Friction coefficient (1/ps). Scalar or (nsystems,) tensor.
         temperature : float or Tensor
             Temperature(s) in Kelvin. Scalar or (nsystems,) tensor.
         dt : float or Tensor
