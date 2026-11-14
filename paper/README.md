@@ -45,12 +45,14 @@ the lambda-repressor checkpoint is used: all runs pass `--nnp lambda`.
 
 | Fig. | Content | Driver(s) → raw output | Figure script → PNG |
 |---|---|---|---|
-| 1 | Force agreement in a mixed batch (float64) | `test_independencie.py` → `results/a2_nve/run5/` | `fig_a2_paper.py` → `forces_all_nnp.png` |
-| 2 | Deterministic trajectories, image contacts | `test_multiple_systems.py` → `results/a2_nve/run3/nve/` | `fig_a2_paper.py` → `nve_images_fiumd.png`, `nve_final.png` |
-| 3 | Kinetic-temperature distributions | `run_a3_escalera_fiumd.sh` and the TorchMD loop below → `results/sistemas_multiples/a3_*` | `fig_a3_paper.py` → `a3_distribution.png` |
-| 4 | Wall time and speedup of a mixed job | `bench_heterogeneous_ensemble.py` → `results/b1/` | `fig_b1_paper.py` → `b1_step_time.png`, `b1_speedup.png` |
+| 3 | Energy and force agreement in a mixed batch (float64) | `test_independencie.py` → `results/a2_nve/run5/` | `fig_a2_paper.py` → `energy_all_nnp.png`, `forces_all_nnp.png` |
+| 4 | Deterministic trajectories, image contacts | `test_multiple_systems.py` → `results/a2_nve/run3/nve/` | `fig_a2_paper.py` → `nve_images_fiumd.png`, `nve_final.png` |
+| 5, 6 | Mean and width of the kinetic temperature | `run_a3_escalera_fiumd.sh` and the TorchMD loop below → `results/sistemas_multiples/a3_*` | `fig_a3_paper.py` → `a3_mean_T.png`, `a3_sigma.png` |
+| 7 | Wall time and speedup of a mixed job | `bench_heterogeneous_ensemble.py` → `results/b1/` | `fig_b1_paper.py` → `b1_step_time.png`, `b1_speedup.png` |
 
-### Fig. 1: forces
+Figs. 1 and 2 are schematics and use no data.
+
+### Fig. 3: energies and forces
 
 ```bash
 python benchmark/test_independencie.py --composition cln:32,trp:16,bbl:8,lambda:4 \
@@ -58,7 +60,7 @@ python benchmark/test_independencie.py --composition cln:32,trp:16,bbl:8,lambda:
     --outdir results/a2_nve/run5
 ```
 
-### Fig. 2: deterministic trajectories
+### Fig. 4: deterministic trajectories
 
 ```bash
 python benchmark/test_multiple_systems.py --composition cln:32,trp:16,bbl:8,lambda:4 \
@@ -67,14 +69,14 @@ python benchmark/test_multiple_systems.py --composition cln:32,trp:16,bbl:8,lamb
     --nnp lambda --precision float64 --seed 0 --outdir results/a2_nve/run3/nve
 ```
 
-Figures 1 and 2 together:
+Figures 3 and 4 together
 
 ```bash
 python benchmark/fig_a2_paper.py --fuerzas results/a2_nve/run5 \
     --nve results/a2_nve/run3/nve --outdir results/a2_nve/figures
 ```
 
-### Fig. 3: temperature ladder 
+### Figs. 5 and 6: temperature ladder
 
 FiuMD: four heterogeneous batches in a Latin square, each with the four
 temperatures at once, one per protein (300 000 steps each):
@@ -109,7 +111,7 @@ python benchmark/fig_a3_paper.py --discard_ps 50 --plateau_ps 10 25 50 \
 The timings of the A3 runs are not a benchmark: the TorchMD runs shared the GPU.
 The paper takes timings only from B1.
 
-### Fig. 4: timing
+### Fig. 7: timing
 
 ```bash
 python benchmark/bench_heterogeneous_ensemble.py --nnp lambda --precision float32 --seed 0
@@ -121,7 +123,7 @@ synchronized 100-step blocks per mode. `--check` runs a 10-step smoke test.
 
 ## Raw outputs
 
-The raw outputs behind Figs. 1–4 are archived on Zenodo, one folder per figure
+The raw outputs behind Figs. 3–7 are archived on Zenodo, one folder per figure
 (**DOI: TODO**). Unpack the archive here, in `paper/`, and rebuild the figures
 without rerunning the simulations:
 
