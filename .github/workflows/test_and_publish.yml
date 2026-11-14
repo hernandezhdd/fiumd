@@ -1,7 +1,6 @@
 name: Lint
 
-# tests/test_torchmd.py still targets upstream TorchMD (it imports `torchmd`, not
-# `fiumd`), so it is not run here. The FiuMD checks used for the paper are the
+# There are no unit tests yet. The FiuMD checks used for the paper are the
 # drivers in paper/benchmark/, which need a GPU and the downloaded inputs.
 
 on: [push, pull_request]
@@ -25,4 +24,4 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Byte-compile
-        run: python -m compileall -q fiumd paper
+        run: python -m compileall -q fiumd paper examples
