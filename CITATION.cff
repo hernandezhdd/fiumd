@@ -1,0 +1,41 @@
+cff-version: 1.2.0
+message: "If you use FiuMD, please cite it as below, together with TorchMD."
+title: "FiuMD: heterogeneous batching for coarse-grained molecular dynamics with neural network potentials"
+type: software
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/hernandezhdd/fiumd"
+authors:
+  - family-names: "Hernández"
+    given-names: "Hugo"
+    affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
+  - family-names: "Torres"
+    given-names: "Paola B."
+    affiliation: "Grupo Vinculado Bionanotecnología y Sistemas Complejos, INFAP (CONICET--UNSL--UTN)"
+  - family-names: "Negri"
+    given-names: "Lara"
+    affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
+  - family-names: "Cecchini"
+    given-names: "Rocío"
+    affiliation: "Instituto de Ciencias e Ingeniería de la Computación (ICIC), Universidad Nacional del Sur (UNS), CONICET"
+  - family-names: "García"
+    given-names: "Nicolás A."
+    affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
+references:
+  - type: article
+    title: "TorchMD: A Deep Learning Framework for Molecular Simulations"
+    authors:
+      - {family-names: "Doerr", given-names: "Stefan"}
+      - {family-names: "Majewski", given-names: "Maciej"}
+      - {family-names: "Pérez", given-names: "Adrià"}
+      - {family-names: "Krämer", given-names: "Andreas"}
+      - {family-names: "Clementi", given-names: "Cecilia"}
+      - {family-names: "Noé", given-names: "Frank"}
+      - {family-names: "Giorgino", given-names: "Toni"}
+      - {family-names: "De Fabritiis", given-names: "Gianni"}
+    journal: "Journal of Chemical Theory and Computation"
+    volume: 17
+    start: 2355
+    end: 2363
+    year: 2021
+    doi: "10.1021/acs.jctc.0c01343"

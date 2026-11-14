@@ -1,71 +1,73 @@
 # FiuMD
 
-## Install FiuMD
+FiuMD runs many coarse-grained protein simulations of different size and
+topology as one GPU batch. It is a fork of
+[TorchMD](https://github.com/torchmd/torchmd). Each classical term (bonds,
+repulsion, dihedrals) acts on the whole batch with per-system parameters. One
+shared [TorchMD-Net](https://github.com/torchmd/torchmd-net) call returns a
+neural-network energy correction for every system, and the integrators advance
+each trajectory with its own timestep, box, cutoff and thermostat parameters.
 
-First we have to clone this repo to the local machine. Then create a new environment:
-```
-mamba create -n fiumd -c conda-forge -c acellera python=3.10 moleculekit parmed ipykernel biopython
-
-mamba activate fiumd
-
-pip install torch==2.7.1+cu128 torchvision torchaudio torchmd==1.0.4 torchmd-net --extra-index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://us-central1-python.pkg.dev/pypi-packages-455608/cu128/simple
-```
-Here i use CUDA 12.8. Finally install fiumd in editable mode with:
-```
-pip install -e /LOCAL/PATH/TO/fiumd
-```
-
-## About
-
-TorchMD intends to provide a simple to use API for performing molecular dynamics using PyTorch. This enables researchers to more rapidly do research in force-field development as well as integrate seamlessly neural network potentials into the dynamics, with the simplicity and power of PyTorch.
-
-TorchMD uses chemical units consistent with classical MD codes such as ACEMD, namely kcal/mol for energies, K for temperatures, g/mol for masses, and Å for distances.
-
-TorchMD is currently WIP so feel free to provide feedback on the API or potential bugs in the GitHub issue tracker.
-
-Also check TorchMD-Net for fast and accurate neural network potentials https://github.com/torchmd/torchmd-net/
-
-## Citation
-
-Please cite:
-
-```
-@misc{doerr2020torchmd,
-      title={TorchMD: A deep learning framework for molecular simulations},
-      author={Stefan Doerr and Maciej Majewsk and Adrià Pérez and Andreas Krämer and Cecilia Clementi and Frank Noe and Toni Giorgino and Gianni De Fabritiis},
-      year={2020},
-      eprint={2012.12106},
-      archivePrefix={arXiv},
-      primaryClass={physics.chem-ph}
-}
-```
-
-To reproduce the paper go to the tutorial notebook https://github.com/torchmd/torchmd-cg/blob/master/tutorial/Chignolin_Coarse-Grained_Tutorial.ipynb
-
-## License
-
-Note. All the code in this repository is MIT, however we use several file format readers that are taken from Moleculekit which has a free open source non-for-profit, research license. This is mainly in torchmd/run.py. Moleculekit is installed automatically being in the requirement file. Check out Moleculekit here: https://github.com/Acellera/moleculekit
+Units follow TorchMD: kcal/mol, K, g/mol and Å.
 
 ## Installation
 
-We recommend installing TorchMD in a new python environment ideally through the Miniforge package manager.
+Tested with Python 3.10.18, PyTorch 2.13.0+cu130 (CUDA 13.0), TorchMD-Net 3.0.3
+and TorchMD 1.1.2 on Linux.
 
+```bash
+mamba create -n fiumd -c conda-forge -c acellera python=3.10 moleculekit parmed
+mamba activate fiumd
+pip install torch --index-url https://download.pytorch.org/whl/cu130   # match your CUDA
+pip install torchmd-net==3.0.3
+git clone https://github.com/hernandezhdd/fiumd.git
+pip install -e fiumd
 ```
-mamba create -n torchmd
-mamba activate torchmd
-mamba install pytorch python=3.10 -c conda-forge
-mamba install moleculekit parmed jupyter -c acellera -c conda-forge # For running the examples
-pip install torchmd
+
+TorchMD itself (`pip install torchmd==1.1.2`) is needed only to run the
+reference comparisons in `paper/`.
+
+## Usage
+
+To advance two proteins in one batch, prepare one `(molecule, parameters, box)`
+triple per system: a MoleculeKit `Molecule`, its FiuMD `Parameters` and a tensor
+of three box lengths in Å. Then concatenate positions and velocities in the
+same system and bead order and build an `Ensemble`. The paper gives a complete
+example. `paper/benchmark/heterogeneous_ensemble.py` builds mixed batches of
+four proteins from the command line.
+
+`examples/two_proteins.py` runs chignolin and Trp-cage in one batch at two
+temperatures (inputs from `paper/datos`, see `paper/datos/README.md`).
+
+## Reproducing the paper
+
+`paper/` has the drivers, figure scripts and inputs for the arXiv v1 paper. Start
+with [`paper/README.md`](paper/README.md).
+
+## Citation
+
+If you use FiuMD, please cite the FiuMD paper (see `CITATION.cff`; the arXiv
+identifier will be added on posting) and TorchMD:
+
+```bibtex
+@article{doerr2021torchmd,
+  title   = {TorchMD: A Deep Learning Framework for Molecular Simulations},
+  author  = {Doerr, Stefan and Majewski, Maciej and P{\'e}rez, Adri{\`a} and Kr{\"a}mer, Andreas
+             and Clementi, Cecilia and No{\'e}, Frank and Giorgino, Toni and De Fabritiis, Gianni},
+  journal = {Journal of Chemical Theory and Computation},
+  volume  = {17},
+  pages   = {2355--2363},
+  year    = {2021},
+  doi     = {10.1021/acs.jctc.0c01343}
+}
 ```
 
-## Examples
+## License
 
-Various examples can be found in the `examples` folder on how to perform dynamics using TorchMD.
-
-## Help and comments
-
-Please use the github issue of this repository.
+MIT (see `LICENSE.md`), as in upstream TorchMD. Some file-format readers come
+from MoleculeKit, which has its own license; see
+<https://github.com/Acellera/moleculekit>.
 
 ## Acknowledgements
 
-We would like to acknowledge funding by the Chan Zuckerberg Initiative and Acellera in support of this project. This project will be now developed in collaboration with openMM (www.openmm.org) and acemd (www.acellera.com/acemd).
+FiuMD builds on TorchMD by Acellera and the TorchMD authors.
