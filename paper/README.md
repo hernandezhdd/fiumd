@@ -121,6 +121,14 @@ synchronized 100-step blocks per mode. `--check` runs a 10-step smoke test.
 
 ## Raw outputs
 
-`results/` (~30 MB: `a2_nve/run3`, `a2_nve/run5`, `b1`, `sistemas_multiples/a3_*`)
-is archived on Zenodo: **DOI: TODO**. Unpack it into `paper/results/` to rebuild
-the figures without rerunning the simulations.
+The raw outputs behind Figs. 1–4 are archived on Zenodo, one folder per figure
+(**DOI: TODO**). Unpack the archive here, in `paper/`, and rebuild the figures
+without rerunning the simulations:
+
+```bash
+python benchmark/fig_a2_paper.py --fuerzas fiumd-v0.1.0-results/fig1_forces \
+    --nve fiumd-v0.1.0-results/fig2_nve --outdir figures
+python benchmark/fig_a3_paper.py --base fiumd-v0.1.0-results/fig3_temperature \
+    --discard_ps 50 --plateau_ps 10 25 50 --outdir figures
+python benchmark/fig_b1_paper.py --b1 fiumd-v0.1.0-results/fig4_timing --outdir figures
+```
