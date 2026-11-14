@@ -1,12 +1,19 @@
 [project]
 name = "fiumd"
 dynamic = ["version"]
-description = "FiuMD. Molecular dynamics with pytorch"
+description = "Heterogeneous batching of coarse-grained MD with neural network potentials (fork of TorchMD)"
 authors = [
-    { name = "Acellera", email = "info@acellera.com" }
+    { name = "Hugo Hernández" },
+    { name = "Paola B. Torres" },
+    { name = "Lara Negri" },
+    { name = "Rocío Cecchini" },
+    { name = "Nicolás A. García" },
+    { name = "Acellera (original TorchMD)" },
 ]
+
 readme = "README.md"
 license = {file = "LICENSE.md"}
+requires-python = ">=3.10"
 classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -18,12 +25,15 @@ dependencies = [
     "moleculekit",
     "pandas",
     "networkx",
-    "scipy" # Only needed for minimizers
+    "scipy", 
+    "torch",
+    "torchmd-net"
 ]
 
 [project.urls]
-homepage = "https://github.com/torchmd/torchmd/"
-repository = "https://github.com/torchmd/torchmd/"
+homepage = "https://github.com/hernandezhdd/fiumd"
+repository = "https://github.com/hernandezhdd/fiumd"
+upstream = "https://github.com/torchmd/torchmd"
 
 [tool.setuptools.packages.find]
 include = ["fiumd*", "LICENSE.md"]
@@ -33,7 +43,7 @@ VCS = "git"
 style = "pep440"
 versionfile_source = "fiumd/_version.py"
 versionfile_build = "fiumd/_version.py"
-tag_prefix = ""
+tag_prefix = "v"
 parentdir_prefix = "fiumd-"
 
 [build-system]

@@ -104,3 +104,10 @@ venv.bak/
 # mypy
 .mypy_cache/
 .*.xtc*
+
+paper/results/
+paper/logs/
+paper/datos/*/*
+!paper/datos/*/*.psf
+!paper/datos/README.md
+!paper/datos/experimental_structures/*.pdb
