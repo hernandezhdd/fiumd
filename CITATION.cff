@@ -6,8 +6,8 @@ version: 0.1.0
 license: MIT
 repository-code: "https://github.com/hernandezhdd/fiumd"
 authors:
-  - family-names: "Hernández"
-    given-names: "Hugo"
+  - family-names: "Hernández R."
+    given-names: "Hugo D."
     affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
   - family-names: "Torres"
     given-names: "Paola B."
@@ -16,7 +16,7 @@ authors:
     given-names: "Lara"
     affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
   - family-names: "Cecchini"
-    given-names: "Rocío"
+    given-names: "Rocío L."
     affiliation: "Instituto de Ciencias e Ingeniería de la Computación (ICIC), Universidad Nacional del Sur (UNS), CONICET"
   - family-names: "García"
     given-names: "Nicolás A."
