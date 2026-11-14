@@ -25,3 +25,8 @@ jobs:
 
       - name: Byte-compile
         run: python -m compileall -q fiumd paper examples
+
+      - name: Build package
+        run: |
+          pip install build
+          python -m build --sdist
