@@ -46,8 +46,7 @@ with [`paper/README.md`](paper/README.md).
 
 ## Citation
 
-If you use FiuMD, please cite the FiuMD paper (see `CITATION.cff`; the arXiv
-identifier will be added on posting) and TorchMD:
+If you use FiuMD, please cite the FiuMD paper (see also `CITATION.cff`) and TorchMD:
 
 ```bibtex
 @misc{r2026fiumdheterogeneousbatchingcoarsegrained,
