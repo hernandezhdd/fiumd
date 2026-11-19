@@ -50,6 +50,16 @@ If you use FiuMD, please cite the FiuMD paper (see `CITATION.cff`; the arXiv
 identifier will be added on posting) and TorchMD:
 
 ```bibtex
+@misc{r2026fiumdheterogeneousbatchingcoarsegrained,
+      title={FiuMD: Heterogeneous Batching for Coarse-Grained Molecular Dynamics with Neural Network Potentials}, 
+      author={Hugo D. Hernández R. and Paola B. Torres and Lara Negri and Rocío L. Cecchini and Nicolás A. García},
+      year={2026},
+      eprint={2611.20429},
+      archivePrefix={arXiv},
+      primaryClass={physics.comp-ph},
+      url={https://arxiv.org/abs/2611.20429}, 
+}
+
 @article{doerr2021torchmd,
   title   = {TorchMD: A Deep Learning Framework for Molecular Simulations},
   author  = {Doerr, Stefan and Majewski, Maciej and P{\'e}rez, Adri{\`a} and Kr{\"a}mer, Andreas
