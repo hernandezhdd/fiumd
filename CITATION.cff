@@ -21,6 +21,20 @@ authors:
   - family-names: "García"
     given-names: "Nicolás A."
     affiliation: "Instituto de Física del Sur (IFISUR), Departamento de Física, Universidad Nacional del Sur (UNS), CONICET"
+preferred-citation:
+  type: article
+  status: preprint
+  title: "FiuMD: Heterogeneous Batching for Coarse-Grained Molecular Dynamics with Neural Network Potentials"
+  authors:
+    - {family-names: "Hernández R.", given-names: "Hugo D."}
+    - {family-names: "Torres", given-names: "Paola B."}
+    - {family-names: "Negri", given-names: "Lara"}
+    - {family-names: "Cecchini", given-names: "Rocío L."}
+    - {family-names: "García", given-names: "Nicolás A."}
+  journal: "arXiv"
+  year: 2026
+  doi: "10.48550/arXiv.2611.20429"
+  url: "https://arxiv.org/abs/2611.20429"
 references:
   - type: article
     title: "TorchMD: A Deep Learning Framework for Molecular Simulations"
